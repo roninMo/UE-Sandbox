@@ -49,7 +49,7 @@ ABhopCharacter::ABhopCharacter()
 	// Movement component configuration (configure the movement (the movement for the character (the character's movement)))
 	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of the movement input
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 850.0f, 0.0f); // ...at this rotation rate
-	bUseControllerRotationYaw = false; // This off with OrientRotationMovement on lets the character rotation be independent from the orient rotation
+	bUseControllerRotationYaw = true; // This off with OrientRotationMovement on lets the character rotation be independent from walking direction (keep it on for bhopping) -> set it to false when standing still perhaps
 
 	#pragma region Get character movement compendium
 	// CharacterMovement (General Settings)
@@ -150,16 +150,19 @@ void ABhopCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
+	// Base Movements
 	PlayerInputComponent->BindAxis("MoveForward", this, &ABhopCharacter::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &ABhopCharacter::MoveRight);
 	PlayerInputComponent->BindAxis("Turn", this, &ABhopCharacter::Turn);
 	PlayerInputComponent->BindAxis("Lookup", this, &ABhopCharacter::Lookup);
 
+	// Auxillery movements
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ABhopCharacter::Jump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &ABhopCharacter::StartSprint);
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &ABhopCharacter::StopSprint);
 
+	// Actions
 	PlayerInputComponent->BindAction("Equip", IE_Pressed, this, &ABhopCharacter::EquipButtonPress);
 	PlayerInputComponent->BindAction("UnEquip", IE_Released, this, &ABhopCharacter::UnEquipButtonPress);
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &ABhopCharacter::CrouchButtonPressed);
@@ -194,8 +197,7 @@ void ABhopCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// Bhop logic
-	// Calculate frameTime (DeltaTime), PrevVelocity, and the XYspeedometer
+	//// Bhop logic //// Calculate frameTime (DeltaTime), PrevVelocity, and the XYspeedometer
 	FrameTime = DeltaTime;
 	PrevVelocity = GetVelocity();
 	XYspeedometer = PrevVelocity.Length();
@@ -238,14 +240,12 @@ void ABhopCharacter::MoveTheCharacter(float Value, bool isForward)
 
 void ABhopCharacter::MoveForward(float Value)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Moving the character forwards?"));
 	MoveTheCharacter(Value, true);
 }
 
 
 void ABhopCharacter::MoveRight(float Value)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Moving the character sideways?"));
 	MoveTheCharacter(Value, false);
 }
 
