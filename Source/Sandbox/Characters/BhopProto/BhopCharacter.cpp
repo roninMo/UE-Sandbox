@@ -11,6 +11,7 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "Sound/SoundCue.h"
 #include "Misc/App.h"
+#include "Engine/World.h"
 
 // Components 
 #include "GameFramework/SpringArmComponent.h"
@@ -318,6 +319,31 @@ void ABhopCharacter::HandleRemoveFriction()
 #pragma endregion
 
 
+#pragma region Ram Stuff
+void ABhopCharacter::RamSlide()
+{
+
+}
+
+void ABhopCharacter::RampCheck()
+{
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		FHitResult BreakHitResult;
+
+		World->LineTraceSingleByChannel(
+			BreakHitResult,
+			GetActorLocation(),
+			GetActorLocation() - GetActorUpVector(),
+			ECollisionChannel::ECC_Visibility
+		);
+	}
+}
+#pragma endregion
+
+
+
 #pragma region Add Ramp Momentum
 void ABhopCharacter::AddRampMomentum()
 {
@@ -344,6 +370,7 @@ void ABhopCharacter::HandleAddRampMomentum()
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->JumpZVelocity = DefaultJumpVelocity * RampMomentumFactor;
+		Jump();
 	}
 }
 #pragma endregion
@@ -354,41 +381,34 @@ void ABhopCharacter::HandleAddRampMomentum()
 
 
 #pragma region Input Functions
-void ABhopCharacter::MoveTheCharacter(float Value, bool isForward)
+void ABhopCharacter::HandleMovement()
 {
-	if (Controller != nullptr && Value != 0.f) {
-		const auto Axis = isForward ? EAxis::X : EAxis::Y;
-		const FRotator YawRotation(0.f, Controller->GetControlRotation().Yaw, 0.f); // The yaw helps us determine the direction
-		const FVector Direction(FRotationMatrix(YawRotation).GetUnitAxis(Axis)); // This is a function to grab the direction from a specific rotation, in this case we're grabbing the yaw
+	if (CachedCharacterMovement->IsFalling()) // In air
+	{
+		RemoveFriction();
+	}
+	else // On the ground like a scrub
+	{
 
-		FString RotationString = YawRotation.ToCompactString();
-		FString DirectionString = Direction.ToCompactString();
-		//UE_LOG(LogTemp, Warning, TEXT("YawRotation: %s, Direction: %s"), *RotationString, *DirectionString);
-
-		if (GetCharacterMovement()->IsFalling()) // Air
-		{
-
-		}
-		else // Ground
-		{
-
-		}
-
-		// Add a force to the character with the move functions
-		AddMovementInput(Direction, Value);
 	}
 }
 
 
 void ABhopCharacter::MoveForward(float Value)
 {
-	MoveTheCharacter(Value, true);
+	InputForwardAxis = Value;
+	InputForwardVector = GetActorForwardVector();
+
+	HandleMovement();
 }
 
 
 void ABhopCharacter::MoveRight(float Value)
 {
-	MoveTheCharacter(Value, false);
+	InputSideAxis = Value;
+	InputSideVector = GetActorRightVector();
+
+	HandleMovement();
 }
 
 

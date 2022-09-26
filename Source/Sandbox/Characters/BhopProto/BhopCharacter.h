@@ -58,8 +58,6 @@ protected:
 
 
 private:
-	void MoveTheCharacter(float Value, bool isForward);
-
 	UPROPERTY()
 		bool bIsSprinting = false;
 
@@ -92,6 +90,11 @@ private:
 	UFUNCTION()
 		void HandleRemoveFriction();
 
+	UFUNCTION()
+		void RamSlide();
+	UFUNCTION()
+		void RampCheck();
+
 	// Add Ramp Momentum
 	UFUNCTION(Server, Reliable)
 		void ServerAddRampMomentum();
@@ -100,6 +103,8 @@ private:
 	UFUNCTION()
 		void HandleAddRampMomentum();
 
+	// Movement Input Air and Ground logic
+	void HandleMovement();
 
 	// the base bhop values
 	#pragma region Base Bhop values
@@ -111,6 +116,14 @@ private:
 		float DefaultFriction = 8.f; // CharacterMovement->GroundFriction
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultJumpVelocity = 1000.f; // CharacterMovement->JumpZVelocity
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		float InputForwardAxis = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		FVector InputForwardVector = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		float InputSideAxis = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		FVector InputSideVector = FVector::Zero();
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_AirAccel")
 		bool bEnableCustomAirAccel = true;
@@ -150,10 +163,17 @@ private:
 		float GroundAccelerate = 100.f;
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		float LegBreakThreshold = 2.5f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		float LandSoundCooldown = 1.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		float JumpSoundCooldown = 1.f;
+
+	UPROPERTY(EditAnywhere, Category = "Bhop_Other")
 		FVector WeaponOffset = FVector(50.f, 33.f, 10.f);
-	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+	UPROPERTY(EditAnywhere, Category = "Bhop_Other")
 		float BaseTurnRate = 45.f;
-	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+	UPROPERTY(EditAnywhere, Category = "Bhop_Other")
 		float BaseLookUpRate = 45.f;
 	#pragma endregion
 
