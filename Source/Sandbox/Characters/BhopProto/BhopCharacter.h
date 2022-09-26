@@ -29,7 +29,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	
+
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
@@ -60,16 +60,102 @@ protected:
 private:
 	void MoveTheCharacter(float Value, bool isForward);
 
-	//// bhop vars ////
+	UPROPERTY()
+		bool bIsSprinting = false;
+
+
+//////////////////////////////////////////////////////////////////////////
+// Bunny Hopping Stuff													//
+//////////////////////////////////////////////////////////////////////////
+private:
+	 /**
+	  * Called from CharacterMovementComponent to notify the character that the movement mode has changed.
+	  * @param	PrevMovementMode	Movement mode before the change
+	  * @param	PrevCustomMode		Custom mode before the change (applicable if PrevMovementMode is Custom)
+	  */
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
+
+
+	// Reset Friction and Rpcs
+	UFUNCTION(Server, Reliable)
+		void ServerResetFriction();
+	UFUNCTION()
+		void ResetFriction();
+	UFUNCTION()
+		void HandleResetFriction();
+
+	// Remove Friction and Rpcs
+	UFUNCTION(Server, Reliable)
+		void ServerRemoveFriction();
+	UFUNCTION()
+		void RemoveFriction();
+	UFUNCTION()
+		void HandleRemoveFriction();
+
+	// Add Ramp Momentum
+	UFUNCTION(Server, Reliable)
+		void ServerAddRampMomentum();
+	UFUNCTION()
+		void AddRampMomentum();
+	UFUNCTION()
+		void HandleAddRampMomentum();
+
+
 	// the base bhop values
-	UPROPERTY(VisibleAnywhere, Category = "Configuration")
+	#pragma region Base Bhop values
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultMaxWalkSpeed = 800.f; // CharacterMovement->MaxWalkSpeed
-	UPROPERTY(VisibleAnywhere, Category = "Configuration")
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultBraking = 200.f; // CharacterMovement->BrakingDecelerationWalking
-	UPROPERTY(VisibleAnywhere, Category = "Configuration")
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultFriction = 8.f; // CharacterMovement->GroundFriction
-	UPROPERTY(VisibleAnywhere, Category = "Configuration")
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultJumpVelocity = 1000.f; // CharacterMovement->JumpZVelocity
+
+	UPROPERTY(EditAnywhere, Category = "Bhop_AirAccel")
+		bool bEnableCustomAirAccel = true;
+	UPROPERTY(EditAnywhere, Category = "Bhop_AirAccel")
+		float AirAccelerate = 10.f;
+
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
+		bool bEnablePogo = true;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
+		bool bEnableBunnyHopCap = false;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop") // you monster frisbee
+		float BunnyHopCapFactor = 2.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
+		float BhopBleedFactor = 1.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
+		bool bEnableCrouchJump = false;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
+		bool bEnableSpeedometer;
+
+	UPROPERTY(EditAnywhere, Category = "Bhop_Trimping")
+		float TrimpDownMultiplier = 1.3f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Trimping")
+		float TrimpDownVertCap = 0.3f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Trimping")
+		float TrimpUpMultiplier = 1.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Trimping")
+		float TrimpUpLateralSlow = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Bhop_RampSliding")
+		float RampslideThresholdFactor = 2.5f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_RampSliding")
+		float RampMomentumFactor = 1.f;
+
+	UPROPERTY(EditAnywhere, Category = "Bhop_GroundAccel")
+		bool bEnableGroundAccel = true;
+	UPROPERTY(EditAnywhere, Category = "Bhop_GroundAccel")
+		float GroundAccelerate = 100.f;
+
+	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		FVector WeaponOffset = FVector(50.f, 33.f, 10.f);
+	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		float BaseTurnRate = 45.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		float BaseLookUpRate = 45.f;
+	#pragma endregion
 
 
 	// the function values
@@ -80,11 +166,8 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Configuration") // This is the deltatime saved from the tick component
 		float FrameTime = 0.f;
 
-
-	// general
-	UPROPERTY()
-		bool bIsSprinting = false;
-
+	UPROPERTY() // Our own stored reference of the variable to avoid constant get calls
+		TObjectPtr<UCharacterMovementComponent> CachedCharacterMovement;
 
 
 //////////////////////////////////////////////////////////////////////////

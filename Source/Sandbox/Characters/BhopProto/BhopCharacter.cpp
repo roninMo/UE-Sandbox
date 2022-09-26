@@ -20,6 +20,7 @@
 
 // Types
 #include "AI/Navigation/NavigationTypes.h"
+#include "UObject/Class.h"
 
 #pragma region Constructors
 ABhopCharacter::ABhopCharacter()
@@ -57,7 +58,6 @@ ABhopCharacter::ABhopCharacter()
 	GetCharacterMovement()->MaxAcceleration = 6009.f; // pertains to bhop
 	GetCharacterMovement()->BrakingFrictionFactor = 2.f;
 	GetCharacterMovement()->BrakingFriction = 0.f;
-	GetCharacterMovement()->CrouchedHalfHeight = 40.f;
 	GetCharacterMovement()->bUseSeparateBrakingFriction = false;
 	GetCharacterMovement()->Mass = 100.f;
 	GetCharacterMovement()->DefaultLandMovementMode = EMovementMode::MOVE_Walking;
@@ -207,7 +207,149 @@ void ABhopCharacter::Tick(float DeltaTime)
 
 
 #pragma region bhop (movement) logic
-// THE
+void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	// This is being completely overrided because it's doing the broadcast call before we implement our own physics.
+	CachedCharacterMovement = GetCharacterMovement();
+	if (CachedCharacterMovement == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("ERROR: Character movement component not found, exiting OnMovementModeChanged!"));
+		return;
+	}
+	const EMovementMode NewMovementMode = CachedCharacterMovement->MovementMode;
+
+	// Original Functionality
+	if (!bPressedJump || !CachedCharacterMovement->IsFalling())
+	{
+		ResetJumpState();
+	}
+
+	// Record jump force start time for proxies. Allows us to expire the jump even if not continually ticking down a timer.
+	if (bProxyIsJumpForceApplied && CachedCharacterMovement->IsFalling())
+	{
+		ProxyJumpForceStartedTime = GetWorld()->GetTimeSeconds();
+	}
+
+	/*
+	** //// Bunny hoppin functionality ////
+	*/
+	const UEnum* MovementModeEnum = FindObject<UEnum>(ANY_PACKAGE, TEXT("EMovementMode"));
+	UE_LOG(LogTemp, Warning, TEXT("CharacterName: %s, Movement mode: %s, Prev Monke mode: %s")
+		, *GetNameSafe(this)
+		, *(MovementModeEnum ? MovementModeEnum->GetNameStringByIndex(NewMovementMode) : TEXT("<Invalid Enum>"))
+		, *(MovementModeEnum ? MovementModeEnum->GetNameStringByIndex(PrevMovementMode) : TEXT("<Invalid Enum>")));
+
+
+	// Walking state
+
+	// If the character just landed, calculate the force from the speed and direction, and apply a sound for whether they bopped the ground or cracked their legs on the dang ol cement based on the impact speed
+
+	// Create a time window upon landing before friction is applied for bhopping (blueprint configurable)
+
+	// Bhop/Ramp/Trimp logic (trimp is when they fly up through the air after hopping on an edge at an angle)
+}
+
+
+#pragma region Reset Friction
+void ABhopCharacter::ServerResetFriction_Implementation()
+{
+	HandleResetFriction();
+}
+
+
+void ABhopCharacter::ResetFriction()
+{
+	// I wonder if this causes lagginess when the client and server implementations don't align (This makes it so the server runs the same code for keeping track of the client's movements
+	// and it drops the movement functionality specific to that character everywhere else). So only the server keeps track of the details while the character's replicated (rpcs) movements are rendered across all clients
+	// If there's lagginess maybe creating a multicast that the server calls on this is the go forward decision. later edit (OnMovementChanged has a broadcast event that multicasts to prevent this (I thunk))
+	if (HasAuthority()) // On Server
+	{
+		ServerResetFriction();
+	}
+	else
+	{
+		HandleResetFriction();
+	}
+}
+
+
+void ABhopCharacter::HandleResetFriction()
+{
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed;
+		GetCharacterMovement()->GroundFriction = DefaultFriction;
+		GetCharacterMovement()->BrakingDecelerationWalking = DefaultBraking;
+		GetCharacterMovement()->MovementMode;
+	}
+}
+#pragma endregion
+
+
+#pragma region Remove Friction
+void ABhopCharacter::RemoveFriction()
+{
+	// Same as what's said in ResetFriction
+	if (HasAuthority()) // On Server
+	{
+		ServerRemoveFriction();
+	}
+	else
+	{
+		HandleRemoveFriction();
+	}
+}
+
+
+void ABhopCharacter::ServerRemoveFriction_Implementation()
+{
+	HandleRemoveFriction();
+}
+
+
+void ABhopCharacter::HandleRemoveFriction()
+{
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->GroundFriction = 0.f;
+		GetCharacterMovement()->BrakingDecelerationWalking = 0.f;
+	}
+}
+#pragma endregion
+
+
+#pragma region Add Ramp Momentum
+void ABhopCharacter::AddRampMomentum()
+{
+	if (HasAuthority())
+	{
+		ServerAddRampMomentum();
+	}
+	else 
+	{
+		HandleAddRampMomentum();
+	}
+}
+
+
+void ABhopCharacter::ServerAddRampMomentum_Implementation()
+{
+	HandleAddRampMomentum();
+}
+
+
+void ABhopCharacter::HandleAddRampMomentum()
+{
+	// A jump force is needed to prevent sticking to the ground when exiting a rampslide
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->JumpZVelocity = DefaultJumpVelocity * RampMomentumFactor;
+	}
+}
+#pragma endregion
+
+
+// end of bhop region
 #pragma endregion
 
 
@@ -221,7 +363,7 @@ void ABhopCharacter::MoveTheCharacter(float Value, bool isForward)
 
 		FString RotationString = YawRotation.ToCompactString();
 		FString DirectionString = Direction.ToCompactString();
-		UE_LOG(LogTemp, Warning, TEXT("YawRotation: %s, Direction: %s"), *RotationString, *DirectionString);
+		//UE_LOG(LogTemp, Warning, TEXT("YawRotation: %s, Direction: %s"), *RotationString, *DirectionString);
 
 		if (GetCharacterMovement()->IsFalling()) // Air
 		{
@@ -248,6 +390,16 @@ void ABhopCharacter::MoveRight(float Value)
 {
 	MoveTheCharacter(Value, false);
 }
+
+
+
+
+
+
+
+
+
+
 
 
 void ABhopCharacter::Turn(float Value)
@@ -298,4 +450,17 @@ void ABhopCharacter::UnEquipButtonPress()
 {
 	UE_LOG(LogTemp, Warning, TEXT("You pressed the unequip button"));
 }
+#pragma endregion
+
+
+
+
+#pragma region Random Noteworthy stuff I found for coding and learning how to debug and whatever else tickles my fancy
+/* 
+Grabbing and printing enums, also how to get the name of teh character
+	const UEnum* MovementModeEnum = FindObject<UEnum>(ANY_PACKAGE, TEXT("EMovementMode"));
+	UE_LOG(LogTemp, Warning, TEXT("THIS: %s, Movement mode: %s")
+		, *GetNameSafe(this)
+		, *(MovementModeEnum ? MovementModeEnum->GetNameStringByIndex(PreviousMovementMode) : TEXT("<Invalid Enum>")));
+*/
 #pragma endregion
