@@ -90,10 +90,11 @@ private:
 	UFUNCTION()
 		void HandleRemoveFriction();
 
+	// Ramp Slide and Checks
 	UFUNCTION()
-		void RamSlide();
+		bool RamSlide();
 	UFUNCTION()
-		void RampCheck();
+		bool RampCheck();
 
 	// Add Ramp Momentum
 	UFUNCTION(Server, Reliable)
@@ -103,11 +104,55 @@ private:
 	UFUNCTION()
 		void HandleAddRampMomentum();
 
+	// Ground Acceleration Functions
+	UFUNCTION() 
+		void AccelerateGround();
+	UFUNCTION(Server, Reliable)
+		void ServerAccelerateGroundReplication();
+	UFUNCTION()
+		void AccelerateGroundReplication();
+	UFUNCTION()
+		void HandleAccelerateGroundReplication();
+
+
 	// Movement Input Air and Ground logic
-	void HandleMovement();
+	UFUNCTION() 
+		void HandleMovement();
+	UFUNCTION() 
+		void BaseMovementLogic();
+	UFUNCTION() 
+		void MovementDelayLogic();
+	UFUNCTION() 
+		void CreateNextMovementDelayUUID();
 
 	// the base bhop values
 	#pragma region Base Bhop values
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Save the previous velocity amount for calculating the acceleration from the bhop functions
+		FVector PrevVelocity = FVector::Zero();
+	UPROPERTY(EditAnywhere, Category = "Bhop_Analysis") // takes the magnitude of the XY velocity vector (equal to speed in X/Y plane)
+		float XYspeedometer = 0.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Analysis") // This is the deltatime saved from the tick component
+		float FrameTime = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The direction the ground acceleration force is applied
+		FVector GroundAccelDir = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying ground acceleration
+		bool bApplyingGroundAccel = false;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The new acceleration based on the current bhop buildup
+		float CalcMaxWalkSpeed = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		FVector InputDirection = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		FVector InputForwardVector = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		float InputForwardAxis = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		FVector InputSideVector = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		float InputSideAxis = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		bool bIsRampSliding = false;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		int32 NumberOfTimesRampSlided = 0;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultMaxWalkSpeed = 800.f; // CharacterMovement->MaxWalkSpeed
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
@@ -116,14 +161,6 @@ private:
 		float DefaultFriction = 8.f; // CharacterMovement->GroundFriction
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultJumpVelocity = 1000.f; // CharacterMovement->JumpZVelocity
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
-		float InputForwardAxis = 0.f;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
-		FVector InputForwardVector = FVector::Zero();
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
-		float InputSideAxis = 0.f;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
-		FVector InputSideVector = FVector::Zero();
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_AirAccel")
 		bool bEnableCustomAirAccel = true;
@@ -142,6 +179,8 @@ private:
 		bool bEnableCrouchJump = false;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
 		bool bEnableSpeedometer;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop") // The max speed achieved through majestic bhopping
+		float MaxSeaDemonSpeed = 12069.f;
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_Trimping")
 		float TrimpDownMultiplier = 1.3f;
@@ -176,15 +215,6 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Bhop_Other")
 		float BaseLookUpRate = 45.f;
 	#pragma endregion
-
-
-	// the function values
-	UPROPERTY(VisibleAnywhere, Category = "Configuration") // Save the previous velocity amount for calculating the acceleration from the bhop functions
-		FVector PrevVelocity = FVector::Zero();
-	UPROPERTY(EditAnywhere, Category = "Configuration") // takes the magnitude of the XY velocity vector (equal to speed in X/Y plane)
-		float XYspeedometer = 0.f;
-	UPROPERTY(EditAnywhere, Category = "Configuration") // This is the deltatime saved from the tick component
-		float FrameTime = 0.f;
 
 	UPROPERTY() // Our own stored reference of the variable to avoid constant get calls
 		TObjectPtr<UCharacterMovementComponent> CachedCharacterMovement;

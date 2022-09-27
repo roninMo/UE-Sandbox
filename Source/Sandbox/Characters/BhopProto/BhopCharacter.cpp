@@ -12,6 +12,7 @@
 #include "Sound/SoundCue.h"
 #include "Misc/App.h"
 #include "Engine/World.h"
+#include "DrawDebugHelpers.h"
 
 // Components 
 #include "GameFramework/SpringArmComponent.h"
@@ -252,12 +253,6 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 
 
 #pragma region Reset Friction
-void ABhopCharacter::ServerResetFriction_Implementation()
-{
-	HandleResetFriction();
-}
-
-
 void ABhopCharacter::ResetFriction()
 {
 	// I wonder if this causes lagginess when the client and server implementations don't align (This makes it so the server runs the same code for keeping track of the client's movements
@@ -271,6 +266,12 @@ void ABhopCharacter::ResetFriction()
 	{
 		HandleResetFriction();
 	}
+}
+
+
+void ABhopCharacter::ServerResetFriction_Implementation()
+{
+	HandleResetFriction();
 }
 
 
@@ -320,31 +321,51 @@ void ABhopCharacter::HandleRemoveFriction()
 
 
 #pragma region Ram Stuff
-void ABhopCharacter::RamSlide()
+bool ABhopCharacter::RamSlide()
 {
-
+	// Slide on ramp if passed the min ramp slide speed AND on a slideable ramp (found through RampCheck)
+	if (XYspeedometer > (DefaultMaxWalkSpeed * RampslideThresholdFactor) && RampCheck()) return true;
+	return false;
 }
 
-void ABhopCharacter::RampCheck()
+
+bool ABhopCharacter::RampCheck()
 {
 	UWorld* World = GetWorld();
 	if (World)
 	{
+		// Trace a line from the actor to the ground
 		FHitResult BreakHitResult;
-
 		World->LineTraceSingleByChannel(
 			BreakHitResult,
 			GetActorLocation(),
 			GetActorLocation() - GetActorUpVector(),
 			ECollisionChannel::ECC_Visibility
 		);
+		DrawDebugLine(
+			World,
+			GetActorLocation(),
+			GetActorLocation() - GetActorUpVector(),
+			FColor::Emerald,
+			true
+		);
+
+		// get the normalized vectors of the previous and current directions we're traveling on the xy plane to find out whether we're sloping up or down a hill
+		float OutGroundAngleDotproduct = FVector::DotProduct(BreakHitResult.Normal, PrevVelocity.GetSafeNormal(0.0001));
+		float AngleOfRamp = UKismetMathLibrary::Acos(OutGroundAngleDotproduct);
+		UE_LOG(LogTemp, Warning, TEXT("DebugRamp::Normalized XY Plane Direction: %f"), OutGroundAngleDotproduct);
+
+		// Check if the angle is greater than 92 degrees
+		if (AngleOfRamp > 92.f) return true;
 	}
+
+	return false;
 }
 #pragma endregion
 
 
-
 #pragma region Add Ramp Momentum
+// A jump force is needed to prevent sticking to the ground when exiting a rampslide
 void ABhopCharacter::AddRampMomentum()
 {
 	if (HasAuthority())
@@ -366,7 +387,6 @@ void ABhopCharacter::ServerAddRampMomentum_Implementation()
 
 void ABhopCharacter::HandleAddRampMomentum()
 {
-	// A jump force is needed to prevent sticking to the ground when exiting a rampslide
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->JumpZVelocity = DefaultJumpVelocity * RampMomentumFactor;
@@ -376,24 +396,161 @@ void ABhopCharacter::HandleAddRampMomentum()
 #pragma endregion
 
 
-// end of bhop region
+#pragma region Ground Acceleration
+void ABhopCharacter::AccelerateGround()
+{
+	// normalized vector indicating the desired movement direction based on the currently pressed keys
+	FVector RawInputDirection = UKismetMathLibrary::Multiply_VectorFloat(InputForwardVector, InputForwardAxis) + UKismetMathLibrary::Multiply_VectorFloat(InputSideVector, InputSideAxis);
+	InputDirection = RawInputDirection.GetSafeNormal(0.0001f); 
+
+	// Takes the projection of the current velocity along the input direction - this is used to allow some acceleration to take place when turning in the same direction of strafe
+	float ProjectedVelocity = FVector::DotProduct(FVector(GetVelocity().X, GetVelocity().Y, 0.f), InputDirection);
+
+	// Take the length of our input vector (desired input speed)
+	float InputSpeed = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, DefaultMaxWalkSpeed).Length();
+
+	// When a movement key is pressed we subtract the velocity projection from the accel speed cap to set a max acceleration value
+	float MaxAccelSpeed = InputSpeed - ProjectedVelocity;
+
+	// Applying acceleration?
+	if (MaxAccelSpeed > 0.f)
+	{
+		bApplyingGroundAccel = true;
+		float Accelspeed = FMath::Clamp((FrameTime * InputSpeed * GroundAccelerate), 0.f, MaxAccelSpeed);
+
+		// Calculate the impulse we will apply for acceleration
+		GroundAccelDir = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, Accelspeed);
+
+		// Determine what new maxWalkSpeed should be to allow acceleration impulses to take effect
+		// Also the clamp is to prevent the default maxWalkSpeed from being set less than the normal walking speed
+		CalcMaxWalkSpeed = FMath::Clamp(UKismetMathLibrary::Add_VectorVector(PrevVelocity, GroundAccelDir).Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
+	}
+	else
+	{
+		bApplyingGroundAccel = false;
+	}
+}
+
+
+void ABhopCharacter::AccelerateGroundReplication()
+{
+	if (bApplyingGroundAccel)
+	{
+		if (HasAuthority())
+		{
+			ServerAccelerateGroundReplication();
+		}
+		else
+		{
+			GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
+			// Accelerate ground replication still needs to be implemented!
+		}
+	}
+}
+
+
+void ABhopCharacter::ServerAccelerateGroundReplication_Implementation()
+{
+
+}
+
+
+void ABhopCharacter::HandleAccelerateGroundReplication()
+{
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
+	}
+}
 #pragma endregion
 
 
-#pragma region Input Functions
+#pragma region MovementLogic
 void ABhopCharacter::HandleMovement()
 {
+	if (!GetWorld()) return;
+
 	if (CachedCharacterMovement->IsFalling()) // In air
 	{
 		RemoveFriction();
 	}
 	else // On the ground like a scrub
 	{
+		bool bOnRampSlide = RamSlide();
 
+		// Is the character rampsliding?
+		if (bOnRampSlide)
+		{
+			RemoveFriction();
+			bIsRampSliding = true;
+		}
+		else
+		{
+			// In the case that we just got out of rampsliding, then we add a momentum force to prevent stickiness when exiting the rampslide
+			if (bIsRampSliding)
+			{
+				AddRampMomentum();
+
+				// Then create a delay before applying the friction again
+				FLatentActionInfo StuffTodoOnComplete; // https://www.reddit.com/r/unrealengine/comments/b1t1d8/how_to_wait_for/
+				StuffTodoOnComplete.CallbackTarget = this;
+				StuffTodoOnComplete.ExecutionFunction = FName("MovementDelayLogic");
+				StuffTodoOnComplete.Linkage = 0;
+				StuffTodoOnComplete.UUID = NumberOfTimesRampSlided;
+
+				UKismetSystemLibrary::Delay(GetWorld(), FrameTime * 2.f, StuffTodoOnComplete);
+			}
+			else // If we weren't rampsliding, then handle the base movement logic
+			{
+				if (bEnableGroundAccel)
+				{
+					BaseMovementLogic();
+				}
+			}
+		}
+	}
+}
+
+void ABhopCharacter::BaseMovementLogic()
+{
+	// Apply ground acceleration when turning (and replicate it)
+	if (bEnableGroundAccel)
+	{
+		AccelerateGround();
+
+		// AccelGroundReplication stuff
+
+	}
+	else // Apply the standard movement logic
+	{
+		AddMovementInput(InputForwardVector, InputForwardAxis);
+		AddMovementInput(InputSideVector, InputSideAxis);
 	}
 }
 
 
+void ABhopCharacter::MovementDelayLogic()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Calling the movement delay logic function!"));
+
+	// Reset the friction and set wasRampSliding to false
+	bIsRampSliding = false;
+	ResetFriction();
+	CreateNextMovementDelayUUID(); // For the next time we call the rampslide delay
+
+	// Run the base implementation
+	BaseMovementLogic();
+}
+#pragma endregion
+
+
+// end of bhop region
+#pragma endregion
+
+
+
+
+#pragma region Input Functions
 void ABhopCharacter::MoveForward(float Value)
 {
 	InputForwardAxis = Value;
@@ -472,6 +629,17 @@ void ABhopCharacter::UnEquipButtonPress()
 }
 #pragma endregion
 
+
+
+
+
+#pragma region Misc and Getters and Setters
+void ABhopCharacter::CreateNextMovementDelayUUID()
+{
+	NumberOfTimesRampSlided++;
+}
+
+#pragma endregion
 
 
 
