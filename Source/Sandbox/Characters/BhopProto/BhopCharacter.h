@@ -71,8 +71,12 @@ private:
 	  * @param	PrevMovementMode	Movement mode before the change
 	  * @param	PrevCustomMode		Custom mode before the change (applicable if PrevMovementMode is Custom)
 	  */
-	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PrevCustomMode = 0) override;
 
+	UPROPERTY(EditAnywhere, Category = "Audio")
+		class USoundCue* LegBonkSound;
+	UPROPERTY(EditAnywhere, Category = "Audio")
+		class USoundCue* JumpLandSound;
 
 	// Reset Friction and Rpcs
 	UFUNCTION(Server, Reliable)
@@ -114,6 +118,15 @@ private:
 	UFUNCTION()
 		void HandleAccelerateGroundReplication();
 
+	// Air Acceleration (The blind man's folly)
+	UFUNCTION()
+		void AccelerateAir();
+	UFUNCTION(Server, Reliable)
+		void ServerAccelerateAirReplication();
+	UFUNCTION()
+		void AccelerateAirReplication();
+	UFUNCTION()
+		void HandleAccelerateAirReplication();
 
 	// Movement Input Air and Ground logic
 	UFUNCTION() 
@@ -122,8 +135,11 @@ private:
 		void BaseMovementLogic();
 	UFUNCTION() 
 		void MovementDelayLogic();
-	UFUNCTION() 
-		void CreateNextMovementDelayUUID();
+
+	// Other bhop functions
+	UFUNCTION()
+		void ResetFrictionDelay();
+
 
 	// the base bhop values
 	#pragma region Base Bhop values
@@ -137,8 +153,14 @@ private:
 		FVector GroundAccelDir = FVector::Zero();
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying ground acceleration
 		bool bApplyingGroundAccel = false;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The new acceleration based on the current bhop buildup
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The new ground acceleration based on the current bhop buildup
 		float CalcMaxWalkSpeed = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // he direction the air acceleration force is applied
+		FVector AirAccelDir = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying air acceleration
+		bool bApplyingAirAccel = false;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The new air acceleration based on the current bhop buildup
+		float CalcMaxAirSpeed = 0.f;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputDirection = FVector::Zero();
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
@@ -175,10 +197,10 @@ private:
 		float BunnyHopCapFactor = 2.f;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
 		float BhopBleedFactor = 1.f;
-	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
+	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop") // nannniiiiiiii?!?
 		bool bEnableCrouchJump = false;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
-		bool bEnableSpeedometer;
+		bool bEnableSpeedometer = true;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop") // The max speed achieved through majestic bhopping
 		float MaxSeaDemonSpeed = 12069.f;
 
@@ -202,6 +224,8 @@ private:
 		float GroundAccelerate = 100.f;
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		float LandingSoundCooldownTotal = 0.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
 		float LegBreakThreshold = 2.5f;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
 		float LandSoundCooldown = 1.f;
@@ -218,7 +242,8 @@ private:
 
 	UPROPERTY() // Our own stored reference of the variable to avoid constant get calls
 		TObjectPtr<UCharacterMovementComponent> CachedCharacterMovement;
-
+	UPROPERTY()
+		uint32 NumberOfTimesPogoResetFrictionUUID = 0;
 
 //////////////////////////////////////////////////////////////////////////
 // Animations and Montages												//

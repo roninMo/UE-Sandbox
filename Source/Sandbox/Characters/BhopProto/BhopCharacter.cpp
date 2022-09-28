@@ -51,7 +51,7 @@ ABhopCharacter::ABhopCharacter()
 	//////////////////////// Configure the character movement ////////////////////////
 	// Movement component configuration (configure the movement (the movement for the character (the character's movement)))
 	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of the movement input
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 850.0f, 0.0f); // ...at this rotation rate
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 360.0f, 0.0f); // I think this is nulled out by our acceleration forces
 	bUseControllerRotationYaw = true; // This off with OrientRotationMovement on lets the character rotation be independent from walking direction (keep it on for bhopping) -> set it to false when standing still perhaps
 
 	#pragma region Get character movement compendium
@@ -110,14 +110,16 @@ ABhopCharacter::ABhopCharacter()
 	GetCharacterMovement()->NetworkMinTimeBetweenClientAdjustmentsLargeCorrection = 0.05f;
 	GetCharacterMovement()->NetworkLargeClientCorrectionDistance = 15.f;
 	GetCharacterMovement()->bNetworkAlwaysReplicateTransformUpdateTimestamp = false;
-	GetCharacterMovement()->NetworkSimulatedSmoothLocationTime = 0.04f;
-	GetCharacterMovement()->NetworkSimulatedSmoothRotationTime = 0.033f;
+	GetCharacterMovement()->NetworkSimulatedSmoothLocationTime = 0.1f;
+	GetCharacterMovement()->NetworkSimulatedSmoothRotationTime = 0.05f;
+	GetCharacterMovement()->ListenServerNetworkSimulatedSmoothLocationTime = 0.04f;
+	GetCharacterMovement()->ListenServerNetworkSimulatedSmoothRotationTime = 0.033f;
 	GetCharacterMovement()->NetProxyShrinkRadius = 0.01f;
 	GetCharacterMovement()->NetProxyShrinkHalfHeight = 0.01f;
 
 	// Movement Capabilities
-	GetCharacterMovement()->NavAgentProps.AgentHeight = 48.f; // pertains to bhop (i thunk)
-	GetCharacterMovement()->NavAgentProps.AgentRadius = 192.f; // pertains to bhop (i thunk)
+	GetCharacterMovement()->NavAgentProps.AgentHeight = 48.f; // pertains to bhop (i thunk) TODO: Fix these (These are not being set properly, do it manualy)
+	GetCharacterMovement()->NavAgentProps.AgentRadius = 192.f; // pertains to bhop (i thunk) TODO: Fix these (These are not being set properly, do it manualy)
 	GetCharacterMovement()->NavAgentProps.AgentStepHeight = -1.f;
 	GetCharacterMovement()->NavAgentProps.NavWalkingSearchHeightScale = 0.5f;
 	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
@@ -209,9 +211,13 @@ void ABhopCharacter::Tick(float DeltaTime)
 
 
 #pragma region bhop (movement) logic
-void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PrevCustomMode)
 {
 	// This is being completely overrided because it's doing the broadcast call before we implement our own physics.
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Super OnMonkeyModeChange Logic																	//
+	//////////////////////////////////////////////////////////////////////////////////////////////////////
 	CachedCharacterMovement = GetCharacterMovement();
 	if (CachedCharacterMovement == nullptr)
 	{
@@ -232,9 +238,10 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 		ProxyJumpForceStartedTime = GetWorld()->GetTimeSeconds();
 	}
 
-	/*
-	** //// Bunny hoppin functionality ////
-	*/
+	//////////////////////////////////////////////////////////////////////////////////////////////////////
+	//// Bunny hoppin functionality																	  ////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Debugging (print the movement mode information)
 	const UEnum* MovementModeEnum = FindObject<UEnum>(ANY_PACKAGE, TEXT("EMovementMode"));
 	UE_LOG(LogTemp, Warning, TEXT("CharacterName: %s, Movement mode: %s, Prev Monke mode: %s")
 		, *GetNameSafe(this)
@@ -242,13 +249,59 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 		, *(MovementModeEnum ? MovementModeEnum->GetNameStringByIndex(PrevMovementMode) : TEXT("<Invalid Enum>")));
 
 
-	// Walking state
+	// if we're in the Walking state
+	if (NewMovementMode == EMovementMode::MOVE_Walking)
+	{
+		// Is the landing sound not on cooldown?
+		if ( !(LandingSoundCooldownTotal > UKismetSystemLibrary::GetGameTimeInSeconds(this)) )
+		{
+			// Calculate the impact speed for which sound to play (the leg crack or the land hop)
+			if (GetCharacterMovement())
+			{
+				// We need to get the Z velocity when we are walking up ramps. Regular get velocity function shows 0 when walking so cannot be used.
+				// TODO: Implement condition bhop sound based on z velocity impulse
+
+				if (LegBonkSound)
+				{
+					UGameplayStatics::PlaySoundAtLocation(
+						this,
+						LegBonkSound,
+						GetActorLocation()
+					);
+				}
+			}
+		}
+
+		// Set the land sound cooldown variable to be up to date with the game time
+		LandingSoundCooldownTotal = LandSoundCooldown + UKismetSystemLibrary::GetGameTimeInSeconds(this);
+
+
+		// bhop easy mode (good for ue debugging)
+		if (bEnablePogo && bPressedJump)
+		{
+			// TODO: BunnyHopAndTrimpLogic
+		}
+		else
+		{
+			// Create a delay for pogo reseting the friction 
+			FLatentActionInfo StuffTodoOnComplete; // https://www.reddit.com/r/unrealengine/comments/b1t1d8/how_to_wait_for/
+			StuffTodoOnComplete.CallbackTarget = this;
+			StuffTodoOnComplete.ExecutionFunction = FName("ResetFrictionDelay");
+			StuffTodoOnComplete.Linkage = 0;
+			StuffTodoOnComplete.UUID = NumberOfTimesPogoResetFrictionUUID;
+			UKismetSystemLibrary::Delay(GetWorld(), FrameTime * 2.f, StuffTodoOnComplete);
+		}
+	}
 
 	// If the character just landed, calculate the force from the speed and direction, and apply a sound for whether they bopped the ground or cracked their legs on the dang ol cement based on the impact speed
 
 	// Create a time window upon landing before friction is applied for bhopping (blueprint configurable)
 
 	// Bhop/Ramp/Trimp logic (trimp is when they fly up through the air after hopping on an edge at an angle)
+
+
+	// Broadcast this to replicate the movement! (This is the final piece of the original function
+	MovementModeChangedDelegate.Broadcast(this, PrevMovementMode, PrevCustomMode);
 }
 
 
@@ -260,11 +313,11 @@ void ABhopCharacter::ResetFriction()
 	// If there's lagginess maybe creating a multicast that the server calls on this is the go forward decision. later edit (OnMovementChanged has a broadcast event that multicasts to prevent this (I thunk))
 	if (HasAuthority()) // On Server
 	{
-		ServerResetFriction();
+		HandleResetFriction();
 	}
 	else
 	{
-		HandleResetFriction();
+		ServerResetFriction();
 	}
 }
 
@@ -285,6 +338,13 @@ void ABhopCharacter::HandleResetFriction()
 		GetCharacterMovement()->MovementMode;
 	}
 }
+
+
+void ABhopCharacter::ResetFrictionDelay()
+{
+	ResetFriction();
+	NumberOfTimesPogoResetFrictionUUID++;
+}
 #pragma endregion
 
 
@@ -294,11 +354,11 @@ void ABhopCharacter::RemoveFriction()
 	// Same as what's said in ResetFriction
 	if (HasAuthority()) // On Server
 	{
-		ServerRemoveFriction();
+		HandleRemoveFriction();
 	}
 	else
 	{
-		HandleRemoveFriction();
+		ServerRemoveFriction();
 	}
 }
 
@@ -321,14 +381,15 @@ void ABhopCharacter::HandleRemoveFriction()
 
 
 #pragma region Ram Stuff
+// Slide on ramp if passed the min ramp slide speed AND on a slideable ramp (found through RampCheck)
 bool ABhopCharacter::RamSlide()
 {
-	// Slide on ramp if passed the min ramp slide speed AND on a slideable ramp (found through RampCheck)
 	if (XYspeedometer > (DefaultMaxWalkSpeed * RampslideThresholdFactor) && RampCheck()) return true;
 	return false;
 }
 
 
+// Check if the surface (ramp) is a slideable ramp (surface angle < 90 degress)
 bool ABhopCharacter::RampCheck()
 {
 	UWorld* World = GetWorld();
@@ -336,26 +397,22 @@ bool ABhopCharacter::RampCheck()
 	{
 		// Trace a line from the actor to the ground
 		FHitResult BreakHitResult;
+		FCollisionQueryParams CollisionParams;
+		CollisionParams.AddIgnoredActor(this);
 		World->LineTraceSingleByChannel(
 			BreakHitResult,
 			GetActorLocation(),
-			GetActorLocation() - GetActorUpVector(),
-			ECollisionChannel::ECC_Visibility
-		);
-		DrawDebugLine(
-			World,
-			GetActorLocation(),
-			GetActorLocation() - GetActorUpVector(),
-			FColor::Emerald,
-			true
+			GetActorLocation() - UKismetMathLibrary::Multiply_VectorFloat(GetActorUpVector(), 100.f),
+			ECollisionChannel::ECC_Visibility,
+			CollisionParams
 		);
 
 		// get the normalized vectors of the previous and current directions we're traveling on the xy plane to find out whether we're sloping up or down a hill
-		float OutGroundAngleDotproduct = FVector::DotProduct(BreakHitResult.Normal, PrevVelocity.GetSafeNormal(0.0001));
-		float AngleOfRamp = UKismetMathLibrary::Acos(OutGroundAngleDotproduct);
-		UE_LOG(LogTemp, Warning, TEXT("DebugRamp::Normalized XY Plane Direction: %f"), OutGroundAngleDotproduct);
+		float OutGroundAngleDotproduct = FVector::DotProduct(BreakHitResult.ImpactNormal, PrevVelocity.GetSafeNormal(0.0001));
+		float AngleOfRamp = UKismetMathLibrary::DegAcos(OutGroundAngleDotproduct);
+		UE_LOG(LogTemp, Warning, TEXT("DebugRamp::Normalized XY Plane Direction: %f, angle of ramp: %f \n"), OutGroundAngleDotproduct, AngleOfRamp);
 
-		// Check if the angle is greater than 92 degrees
+		// Check if the angle is greater than 2 degrees (90 is a flat surface)
 		if (AngleOfRamp > 92.f) return true;
 	}
 
@@ -370,11 +427,11 @@ void ABhopCharacter::AddRampMomentum()
 {
 	if (HasAuthority())
 	{
-		ServerAddRampMomentum();
+		HandleAddRampMomentum();
 	}
 	else 
 	{
-		HandleAddRampMomentum();
+		ServerAddRampMomentum();
 	}
 }
 
@@ -397,6 +454,7 @@ void ABhopCharacter::HandleAddRampMomentum()
 
 
 #pragma region Ground Acceleration
+// Apply Ground acceleration when turning
 void ABhopCharacter::AccelerateGround()
 {
 	// normalized vector indicating the desired movement direction based on the currently pressed keys
@@ -419,11 +477,12 @@ void ABhopCharacter::AccelerateGround()
 		float Accelspeed = FMath::Clamp((FrameTime * InputSpeed * GroundAccelerate), 0.f, MaxAccelSpeed);
 
 		// Calculate the impulse we will apply for acceleration
-		GroundAccelDir = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, Accelspeed);
+		FVector ImpulseVector = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, Accelspeed);
+		GroundAccelDir = InputDirection;
 
 		// Determine what new maxWalkSpeed should be to allow acceleration impulses to take effect
 		// Also the clamp is to prevent the default maxWalkSpeed from being set less than the normal walking speed
-		CalcMaxWalkSpeed = FMath::Clamp(UKismetMathLibrary::Add_VectorVector(PrevVelocity, GroundAccelDir).Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
+		CalcMaxWalkSpeed = FMath::Clamp(UKismetMathLibrary::Add_VectorVector(PrevVelocity, ImpulseVector).Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
 	}
 	else
 	{
@@ -432,26 +491,23 @@ void ABhopCharacter::AccelerateGround()
 }
 
 
+// Replicate that applied ground acceleration
 void ABhopCharacter::AccelerateGroundReplication()
 {
-	if (bApplyingGroundAccel)
+	if (HasAuthority())
 	{
-		if (HasAuthority())
-		{
-			ServerAccelerateGroundReplication();
-		}
-		else
-		{
-			GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
-			// Accelerate ground replication still needs to be implemented!
-		}
+		if (bApplyingGroundAccel || UKismetSystemLibrary::IsDedicatedServer(this)) HandleAccelerateGroundReplication();
+	}
+	else if (bApplyingGroundAccel)
+	{
+		ServerAccelerateGroundReplication();
 	}
 }
 
 
 void ABhopCharacter::ServerAccelerateGroundReplication_Implementation()
 {
-
+	HandleAccelerateGroundReplication();
 }
 
 
@@ -460,12 +516,82 @@ void ABhopCharacter::HandleAccelerateGroundReplication()
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
+		AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
 }
 #pragma endregion
 
 
-#pragma region MovementLogic
+#pragma region AirAcceleration
+void ABhopCharacter::AccelerateAir()
+{
+	// normalized vector indicating the desired movement direction based on the currently pressed keys
+	FVector RawInputDirection = UKismetMathLibrary::Multiply_VectorFloat(InputForwardVector, InputForwardAxis) + UKismetMathLibrary::Multiply_VectorFloat(InputSideVector, InputSideAxis);
+	InputDirection = RawInputDirection.GetSafeNormal(0.0001f);
+
+	// Takes the projection of the current velocity along the input direction - this is used to allow some acceleration to take place when turning in the same direction of strafe
+	float ProjectedVelocity = FVector::DotProduct(GetVelocity(), InputDirection);
+
+	// Take the length of our input vector (desired input speed)
+	float InputSpeed = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, DefaultMaxWalkSpeed).Length();
+
+	// Cap the amount of acceleration in air from a standstill when under the cap. Without this cap you will accelerate from the standstill up to the max walkspeed
+	float AccelSpeedCap = 80.f;
+
+	// When a movement key is pressed we subtract the velocity projection from the accel speed cap to set a max acceleration value
+	float MaxAccelSpeed = FMath::Clamp(InputSpeed, 0.f, AccelSpeedCap) - ProjectedVelocity;
+
+	// Applying acceleration?
+	if (MaxAccelSpeed > 0.f)
+	{
+		bApplyingAirAccel = true;
+		float Accelspeed = FMath::Clamp((FrameTime * InputSpeed * AirAccelerate), 0.f, MaxAccelSpeed);
+
+		// Calculate the impulse we will apply for acceleration
+		FVector ImpulseVector = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, Accelspeed);
+		AirAccelDir = InputDirection;
+
+		// prevent the default maxWalkSpeed from being set less than the normal walking speed
+		CalcMaxAirSpeed = FMath::Clamp(ImpulseVector.Length() + PrevVelocity.Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
+	}
+	else
+	{
+		bApplyingAirAccel = false;
+	}
+}
+
+
+void ABhopCharacter::AccelerateAirReplication()
+{
+	if (HasAuthority())
+	{
+		if (bApplyingAirAccel || UKismetSystemLibrary::IsDedicatedServer(this)) HandleAccelerateAirReplication();
+	}
+	else if (bApplyingAirAccel)
+	{
+		ServerAccelerateGroundReplication();
+	}
+}
+
+
+void ABhopCharacter::ServerAccelerateAirReplication_Implementation()
+{
+	HandleAccelerateAirReplication();
+}
+
+
+void ABhopCharacter::HandleAccelerateAirReplication()
+{
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = CalcMaxAirSpeed;
+		AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
+	}
+}
+#pragma endregion
+
+
+#pragma region Movement Logic
 void ABhopCharacter::HandleMovement()
 {
 	if (!GetWorld()) return;
@@ -473,6 +599,18 @@ void ABhopCharacter::HandleMovement()
 	if (CachedCharacterMovement->IsFalling()) // In air
 	{
 		RemoveFriction();
+		bIsRampSliding = false; 
+
+		// Is custom air acceleration enabled?
+		if (bEnableCustomAirAccel)
+		{
+			AccelerateAir();
+			AccelerateAirReplication();
+		}
+		else
+		{
+			BaseMovementLogic();
+		}
 	}
 	else // On the ground like a scrub
 	{
@@ -481,8 +619,11 @@ void ABhopCharacter::HandleMovement()
 		// Is the character rampsliding?
 		if (bOnRampSlide)
 		{
-			RemoveFriction();
-			bIsRampSliding = true;
+			RemoveFriction(); // When rampsliding we want to remove friction and allow "air control" for steering
+			bIsRampSliding = true; // This is set after rampsliding decision to understand when we EXIT a rampslide
+
+			AccelerateAir();
+			AccelerateAirReplication();
 		}
 		else
 		{
@@ -511,20 +652,19 @@ void ABhopCharacter::HandleMovement()
 	}
 }
 
+
 void ABhopCharacter::BaseMovementLogic()
 {
 	// Apply ground acceleration when turning (and replicate it)
 	if (bEnableGroundAccel)
 	{
 		AccelerateGround();
-
-		// AccelGroundReplication stuff
-
+		AccelerateGroundReplication();
 	}
 	else // Apply the standard movement logic
 	{
 		AddMovementInput(InputForwardVector, InputForwardAxis);
-		AddMovementInput(InputSideVector, InputSideAxis);
+		AddMovementInput(InputSideVector, InputSideAxis); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
 }
 
@@ -536,12 +676,13 @@ void ABhopCharacter::MovementDelayLogic()
 	// Reset the friction and set wasRampSliding to false
 	bIsRampSliding = false;
 	ResetFriction();
-	CreateNextMovementDelayUUID(); // For the next time we call the rampslide delay
+	NumberOfTimesRampSlided++; // For the next time we call the rampslide delay
 
 	// Run the base implementation
 	BaseMovementLogic();
 }
 #pragma endregion
+
 
 
 // end of bhop region
@@ -569,6 +710,13 @@ void ABhopCharacter::MoveRight(float Value)
 }
 
 
+void ABhopCharacter::Jump()
+{
+	//if (bIsCrouched) UnCrouch();
+
+	// TODO: BunnyHopAndTrimpLogic
+}
+
 
 
 
@@ -588,13 +736,6 @@ void ABhopCharacter::Turn(float Value)
 void ABhopCharacter::Lookup(float Value)
 {
 	AddControllerPitchInput(Value);
-}
-
-
-void ABhopCharacter::Jump()
-{
-	if (bIsCrouched) UnCrouch();
-	Super::Jump();
 }
 
 
@@ -632,14 +773,6 @@ void ABhopCharacter::UnEquipButtonPress()
 
 
 
-
-#pragma region Misc and Getters and Setters
-void ABhopCharacter::CreateNextMovementDelayUUID()
-{
-	NumberOfTimesRampSlided++;
-}
-
-#pragma endregion
 
 
 
