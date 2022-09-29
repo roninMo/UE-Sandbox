@@ -161,7 +161,8 @@ void ABhopCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	PlayerInputComponent->BindAxis("Lookup", this, &ABhopCharacter::Lookup);
 
 	// Auxillery movements
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ABhopCharacter::Jump);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ABhopCharacter::StartJump);
+	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ABhopCharacter::StopJump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &ABhopCharacter::StartSprint);
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &ABhopCharacter::StopSprint);
@@ -275,7 +276,6 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 		// Set the land sound cooldown variable to be up to date with the game time
 		LandingSoundCooldownTotal = LandSoundCooldown + UKismetSystemLibrary::GetGameTimeInSeconds(this);
 
-
 		// bhop easy mode (good for ue debugging)
 		if (bEnablePogo && bPressedJump)
 		{
@@ -293,9 +293,6 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 		}
 	}
 
-	// If the character just landed, calculate the force from the speed and direction, and apply a sound for whether they bopped the ground or cracked their legs on the dang ol cement based on the impact speed
-
-	// Create a time window upon landing before friction is applied for bhopping (blueprint configurable)
 
 	// Bhop/Ramp/Trimp logic (trimp is when they fly up through the air after hopping on an edge at an angle)
 
@@ -303,6 +300,109 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 	// Broadcast this to replicate the movement! (This is the final piece of the original function
 	MovementModeChangedDelegate.Broadcast(this, PrevMovementMode, PrevCustomMode);
 }
+
+
+void ABhopCharacter::BhopAndTrimpLogic()
+{
+	RampCheck();
+	ApplyTrimp();
+
+	// Trimp replication
+
+	// play sound if jump sound is not on cooldown
+
+	// apply bunn hop cap and it's replication
+}
+
+#pragma region Apply Trimp
+void ABhopCharacter::ApplyTrimp()
+{
+	// Indicates down sloping ramp
+	if (RampCheckGroundAngleDotproduct > 0.05f) // Downward trimp logic
+	{
+		// limit the amount of vertical reduction when jumping down ramps to ensure we can always jump
+		float ReduceJumpHeightZ = FMath::Clamp(
+			(RampCheckGroundAngleDotproduct * (-1.f / TrimpDownMultiplier) * XYspeedometer),
+			TrimpDownVertCap * DefaultJumpVelocity * -1,
+			0.f
+		);
+		FVector ReduceJumpHeight = FVector(0.f, 0.f, ReduceJumpHeightZ);
+
+		// Combine the vertical and lateral impulses
+		TrimpImpulse = UKismetMathLibrary::Add_VectorVector(
+			UKismetMathLibrary::Multiply_VectorFloat(PrevVelocity, RampCheckGroundAngleDotproduct * TrimpDownMultiplier), // Add lateral speed
+			ReduceJumpHeight
+		);
+	}
+	else if (RampCheckGroundAngleDotproduct < -0.05f) // Upward trimp logic
+	{
+		// determine how much lateral speed to reduce when jumping up ramp
+		FVector ReduceJumpHeight = FVector(0.f, 0.f, RampCheckGroundAngleDotproduct * TrimpUpMultiplier * XYspeedometer);
+
+		TrimpImpulse = UKismetMathLibrary::Add_VectorVector(
+			UKismetMathLibrary::Multiply_VectorFloat(PrevVelocity, TrimpUpLateralSlow * RampCheckGroundAngleDotproduct),
+			ReduceJumpHeight
+		);
+	}
+	else // Neutral trimp logic
+	{
+		TrimpImpulse = FVector::Zero();
+	}
+
+	// Set trimp lateral impulse
+	TrimpLateralImpulse = FVector(TrimpImpulse.X, TrimpImpulse.Y, 0.f).Length() + XYspeedometer;
+	
+	// Set trimp jump impulse
+	TrimpJumpImpulse = TrimpImpulse.Z + DefaultJumpVelocity;
+}
+
+
+void ABhopCharacter::ApplyTrimpReplication()
+{
+	if (HasAuthority())
+	{
+		HandleApplyTrimpReplication();
+	}
+	else
+	{
+		ServerApplyTrimpReplication();
+	}
+}
+
+
+void ABhopCharacter::ServerApplyTrimpReplication_Implementation()
+{
+	HandleApplyTrimpReplication();
+}
+
+
+void ABhopCharacter::HandleApplyTrimpReplication()
+{
+
+}
+#pragma endregion
+
+
+#pragma region Bhop Cap
+void ABhopCharacter::BhopCap()
+{
+}
+
+
+void ABhopCharacter::BhopCapReplication()
+{
+}
+
+
+void ABhopCharacter::ServerBhopCapReplication_Implementation()
+{
+}
+
+
+void ABhopCharacter::HandleBhopCapReplication()
+{
+}
+#pragma endregion
 
 
 #pragma region Reset Friction
@@ -340,6 +440,7 @@ void ABhopCharacter::HandleResetFriction()
 }
 
 
+// Delay function for OnMovementModeChanged function
 void ABhopCharacter::ResetFrictionDelay()
 {
 	ResetFriction();
@@ -408,9 +509,9 @@ bool ABhopCharacter::RampCheck()
 		);
 
 		// get the normalized vectors of the previous and current directions we're traveling on the xy plane to find out whether we're sloping up or down a hill
-		float OutGroundAngleDotproduct = FVector::DotProduct(BreakHitResult.ImpactNormal, PrevVelocity.GetSafeNormal(0.0001));
-		float AngleOfRamp = UKismetMathLibrary::DegAcos(OutGroundAngleDotproduct);
-		UE_LOG(LogTemp, Warning, TEXT("DebugRamp::Normalized XY Plane Direction: %f, angle of ramp: %f \n"), OutGroundAngleDotproduct, AngleOfRamp);
+		RampCheckGroundAngleDotproduct = FVector::DotProduct(BreakHitResult.ImpactNormal, PrevVelocity.GetSafeNormal(0.0001));
+		float AngleOfRamp = UKismetMathLibrary::DegAcos(RampCheckGroundAngleDotproduct);
+		UE_LOG(LogTemp, Warning, TEXT("RampCheck::GroundAngleDotproduct: %f, angle of ramp: %f \n"), RampCheckGroundAngleDotproduct, AngleOfRamp);
 
 		// Check if the angle is greater than 2 degrees (90 is a flat surface)
 		if (AngleOfRamp > 92.f) return true;
@@ -684,7 +785,6 @@ void ABhopCharacter::MovementDelayLogic()
 #pragma endregion
 
 
-
 // end of bhop region
 #pragma endregion
 
@@ -710,13 +810,19 @@ void ABhopCharacter::MoveRight(float Value)
 }
 
 
-void ABhopCharacter::Jump()
+void ABhopCharacter::StartJump()
 {
+	bPressedJump = true;
 	//if (bIsCrouched) UnCrouch();
-
-	// TODO: BunnyHopAndTrimpLogic
+	BhopAndTrimpLogic();
 }
 
+
+void ABhopCharacter::StopJump()
+{
+	bPressedJump = false;
+	StopJumping();
+}
 
 
 

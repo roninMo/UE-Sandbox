@@ -47,7 +47,8 @@ protected:
 	void MoveRight(float Value);
 	void Turn(float Value);
 	void Lookup(float Value);
-	virtual void Jump() override;
+	void StartJump();
+	void StopJump();
 	void StartSprint();
 	void StopSprint();
 	void CrouchButtonPressed();
@@ -136,6 +137,28 @@ private:
 	UFUNCTION() 
 		void MovementDelayLogic();
 
+	// Bhop and Trimp Logic
+	UFUNCTION()
+		void BhopAndTrimpLogic();
+	UFUNCTION()
+		void ApplyTrimp();
+	UFUNCTION(Server, Reliable)
+		void ServerApplyTrimpReplication();
+	UFUNCTION()
+		void ApplyTrimpReplication();
+	UFUNCTION()
+		void HandleApplyTrimpReplication();
+
+	// Bhop cap
+	UFUNCTION()
+		void BhopCap();
+	UFUNCTION(Server, Reliable)
+		void ServerBhopCapReplication();
+	UFUNCTION()
+		void BhopCapReplication();
+	UFUNCTION()
+		void HandleBhopCapReplication();
+
 	// Other bhop functions
 	UFUNCTION()
 		void ResetFrictionDelay();
@@ -183,6 +206,12 @@ private:
 		float DefaultFriction = 8.f; // CharacterMovement->GroundFriction
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultJumpVelocity = 1000.f; // CharacterMovement->JumpZVelocity
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		FVector TrimpImpulse = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		float TrimpLateralImpulse = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		float TrimpJumpImpulse = 0.f;
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_AirAccel")
 		bool bEnableCustomAirAccel = true;
@@ -238,6 +267,8 @@ private:
 		float BaseTurnRate = 45.f;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Other")
 		float BaseLookUpRate = 45.f;
+	UPROPERTY()
+		float RampCheckGroundAngleDotproduct = 0.f;
 	#pragma endregion
 
 	UPROPERTY() // Our own stored reference of the variable to avoid constant get calls
