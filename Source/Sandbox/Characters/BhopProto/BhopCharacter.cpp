@@ -178,6 +178,11 @@ void ABhopCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps); // Net/UnrealNetwork is required to declare rep lifetimes
 
+	DOREPLIFETIME(ABhopCharacter, InputDirection);
+	DOREPLIFETIME(ABhopCharacter, FrameTime);
+	DOREPLIFETIME(ABhopCharacter, RampMomentumFactor);
+	// ApplyingBhopCap
+	// ImpulseVector
 }
 #pragma endregion
 
@@ -314,6 +319,7 @@ void ABhopCharacter::BhopAndTrimpLogic()
 	// apply bunn hop cap and it's replication
 }
 
+
 #pragma region Apply Trimp
 void ABhopCharacter::ApplyTrimp()
 {
@@ -378,7 +384,10 @@ void ABhopCharacter::ServerApplyTrimpReplication_Implementation()
 
 void ABhopCharacter::HandleApplyTrimpReplication()
 {
+	if (GetCharacterMovement())
+	{
 
+	}
 }
 #pragma endregion
 
@@ -556,7 +565,7 @@ void ABhopCharacter::HandleAddRampMomentum()
 
 #pragma region Ground Acceleration
 // Apply Ground acceleration when turning
-void ABhopCharacter::AccelerateGround()
+void ABhopCharacter::AccelerateGround(FVector& OutGroundAccelDir, bool& OutbApplyingGroundAccel, float& OutCalcMaxWalkSpeed)
 {
 	// normalized vector indicating the desired movement direction based on the currently pressed keys
 	FVector RawInputDirection = UKismetMathLibrary::Multiply_VectorFloat(InputForwardVector, InputForwardAxis) + UKismetMathLibrary::Multiply_VectorFloat(InputSideVector, InputSideAxis);
@@ -574,49 +583,53 @@ void ABhopCharacter::AccelerateGround()
 	// Applying acceleration?
 	if (MaxAccelSpeed > 0.f)
 	{
-		bApplyingGroundAccel = true;
+		OutbApplyingGroundAccel = true;
 		float Accelspeed = FMath::Clamp((FrameTime * InputSpeed * GroundAccelerate), 0.f, MaxAccelSpeed);
 
 		// Calculate the impulse we will apply for acceleration
 		FVector ImpulseVector = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, Accelspeed);
-		GroundAccelDir = InputDirection;
+		OutGroundAccelDir = InputDirection;
 
 		// Determine what new maxWalkSpeed should be to allow acceleration impulses to take effect
 		// Also the clamp is to prevent the default maxWalkSpeed from being set less than the normal walking speed
-		CalcMaxWalkSpeed = FMath::Clamp(UKismetMathLibrary::Add_VectorVector(PrevVelocity, ImpulseVector).Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
+		OutCalcMaxWalkSpeed = FMath::Clamp(UKismetMathLibrary::Add_VectorVector(PrevVelocity, ImpulseVector).Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
 	}
 	else
 	{
-		bApplyingGroundAccel = false;
+		OutbApplyingGroundAccel = false;
 	}
 }
 
 
 // Replicate that applied ground acceleration
-void ABhopCharacter::AccelerateGroundReplication()
+void ABhopCharacter::AccelerateGroundReplication(const FVector GroundAccelDir, const bool bApplyingGroundAccel, const float CalcMaxWalkSpeed)
 {
 	if (HasAuthority())
 	{
-		if (bApplyingGroundAccel || UKismetSystemLibrary::IsDedicatedServer(this)) HandleAccelerateGroundReplication();
+		if (bApplyingGroundAccel || UKismetSystemLibrary::IsDedicatedServer(this))
+		{
+			HandleAccelerateGroundReplication(GroundAccelDir, CalcMaxWalkSpeed);
+		}
 	}
 	else if (bApplyingGroundAccel)
 	{
-		ServerAccelerateGroundReplication();
+		ServerAccelerateGroundReplication(GroundAccelDir, CalcMaxWalkSpeed);
 	}
 }
 
 
-void ABhopCharacter::ServerAccelerateGroundReplication_Implementation()
+void ABhopCharacter::ServerAccelerateGroundReplication_Implementation(const FVector GroundAccelDir, const float CalcMaxWalkSpeed)
 {
-	HandleAccelerateGroundReplication();
+	HandleAccelerateGroundReplication(GroundAccelDir, CalcMaxWalkSpeed);
 }
 
 
-void ABhopCharacter::HandleAccelerateGroundReplication()
+void ABhopCharacter::HandleAccelerateGroundReplication(const FVector GroundAccelDir, const float CalcMaxWalkSpeed)
 {
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
+		UE_LOG(LogTemp, Warning, TEXT("Ground accel direction: %s"), *GroundAccelDir.ToCompactString());
 		AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
 }
@@ -666,11 +679,14 @@ void ABhopCharacter::AccelerateAirReplication()
 {
 	if (HasAuthority())
 	{
-		if (bApplyingAirAccel || UKismetSystemLibrary::IsDedicatedServer(this)) HandleAccelerateAirReplication();
+		if (bApplyingAirAccel || UKismetSystemLibrary::IsDedicatedServer(this))
+		{
+			HandleAccelerateAirReplication();
+		}
 	}
 	else if (bApplyingAirAccel)
 	{
-		ServerAccelerateGroundReplication();
+		ServerAccelerateAirReplication();
 	}
 }
 
@@ -759,8 +775,12 @@ void ABhopCharacter::BaseMovementLogic()
 	// Apply ground acceleration when turning (and replicate it)
 	if (bEnableGroundAccel)
 	{
-		AccelerateGround();
-		AccelerateGroundReplication();
+		FVector OutGroundAccelDir = FVector::Zero();
+		bool OutbApplyingGroundAccel = false;
+		float OutCalcMaxWalkSpeed = 0.f;
+		AccelerateGround(OutGroundAccelDir, OutbApplyingGroundAccel, OutCalcMaxWalkSpeed);
+		//UE_LOG(LogTemp, Warning, TEXT("OutGroundAccelDir: %s, OutbApplyingGroundAccel: %s, OutCalcMalkWalkSpeed: %f"), *OutGroundAccelDir.ToCompactString(), OutbApplyingGroundAccel ? TEXT("True") : TEXT("False"), OutCalcMaxWalkSpeed);
+		AccelerateGroundReplication(OutGroundAccelDir, OutbApplyingGroundAccel, OutCalcMaxWalkSpeed);
 	}
 	else // Apply the standard movement logic
 	{
@@ -866,13 +886,15 @@ void ABhopCharacter::CrouchButtonPressed()
 
 void ABhopCharacter::EquipButtonPress()
 {
-	UE_LOG(LogTemp, Warning, TEXT("You pressed the equip button"));
+	DebugCharacterName = 0;
+	UE_LOG(LogTemp, Warning, TEXT("TESTING THE SERVER BOI"));
 }
 
 
 void ABhopCharacter::UnEquipButtonPress()
 {
-	UE_LOG(LogTemp, Warning, TEXT("You pressed the unequip button"));
+	DebugCharacterName = 1;
+	UE_LOG(LogTemp, Warning, TEXT("TESTING THE CLIENTS"));
 }
 #pragma endregion
 
@@ -880,6 +902,24 @@ void ABhopCharacter::UnEquipButtonPress()
 
 
 
+
+void ABhopCharacter::PrintToScreen(FColor color, FString message)
+{
+	if (DebugCharacterName == 0) // Server
+	{
+		if (HasAuthority() && IsLocallyControlled())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("server %s:: %s"), *GetNameSafe(this), *message);
+		}
+	}
+	else // Client
+	{
+		if (!HasAuthority() && IsLocallyControlled())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("client:: %s"), *GetNameSafe(this), *message);
+		}
+	}
+}
 
 
 #pragma region Random Noteworthy stuff I found for coding and learning how to debug and whatever else tickles my fancy

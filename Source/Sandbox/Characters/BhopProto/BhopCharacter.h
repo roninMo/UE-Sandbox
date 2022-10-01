@@ -79,47 +79,52 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Audio")
 		class USoundCue* JumpLandSound;
 
-	// Reset Friction and Rpcs
+	#pragma region Reset Friction
 	UFUNCTION(Server, Reliable)
 		void ServerResetFriction();
 	UFUNCTION()
 		void ResetFriction();
 	UFUNCTION()
 		void HandleResetFriction();
+	#pragma endregion
 
-	// Remove Friction and Rpcs
+	#pragma region Remove Friction
 	UFUNCTION(Server, Reliable)
 		void ServerRemoveFriction();
 	UFUNCTION()
 		void RemoveFriction();
 	UFUNCTION()
 		void HandleRemoveFriction();
+	#pragma endregion
 
-	// Ramp Slide and Checks
+	#pragma region Ramp Slide and Checks
 	UFUNCTION()
 		bool RamSlide();
 	UFUNCTION()
 		bool RampCheck();
+	#pragma endregion
 
-	// Add Ramp Momentum
+	#pragma region Add Ramp Momentum
 	UFUNCTION(Server, Reliable)
 		void ServerAddRampMomentum();
 	UFUNCTION()
 		void AddRampMomentum();
 	UFUNCTION()
 		void HandleAddRampMomentum();
+	#pragma endregion
 
-	// Ground Acceleration Functions
+	#pragma region Ground Acceleration Functions
 	UFUNCTION() 
-		void AccelerateGround();
+		void AccelerateGround(FVector& OutGroundAccelDir, bool& OutbApplyingGroundAccel, float& OutCalcMaxWalkSpeed);
 	UFUNCTION(Server, Reliable)
-		void ServerAccelerateGroundReplication();
+		void ServerAccelerateGroundReplication(const FVector GroundAccelDir, const float CalcMaxWalk);
 	UFUNCTION()
-		void AccelerateGroundReplication();
+		void AccelerateGroundReplication(const FVector GroundAccelDir, const bool bApplyingGroundAccel, const float CalcMaxWalk);
 	UFUNCTION()
-		void HandleAccelerateGroundReplication();
+		void HandleAccelerateGroundReplication(const FVector GroundAccelDir, const float CalcMaxWalk);
+	#pragma endregion
 
-	// Air Acceleration (The blind man's folly)
+	#pragma region Air Acceleration
 	UFUNCTION()
 		void AccelerateAir();
 	UFUNCTION(Server, Reliable)
@@ -128,16 +133,18 @@ private:
 		void AccelerateAirReplication();
 	UFUNCTION()
 		void HandleAccelerateAirReplication();
+	#pragma endregion
 
-	// Movement Input Air and Ground logic
+	#pragma region Movement Input Air and Ground logic
 	UFUNCTION() 
 		void HandleMovement();
 	UFUNCTION() 
 		void BaseMovementLogic();
 	UFUNCTION() 
 		void MovementDelayLogic();
+	#pragma endregion
 
-	// Bhop and Trimp Logic
+	#pragma region Bhop and Trimp Logic
 	UFUNCTION()
 		void BhopAndTrimpLogic();
 	UFUNCTION()
@@ -148,8 +155,9 @@ private:
 		void ApplyTrimpReplication();
 	UFUNCTION()
 		void HandleApplyTrimpReplication();
+	#pragma endregion
 
-	// Bhop cap
+	#pragma region Bhop cap
 	UFUNCTION()
 		void BhopCap();
 	UFUNCTION(Server, Reliable)
@@ -158,11 +166,12 @@ private:
 		void BhopCapReplication();
 	UFUNCTION()
 		void HandleBhopCapReplication();
+	#pragma endregion
+	
 
 	// Other bhop functions
 	UFUNCTION()
 		void ResetFrictionDelay();
-
 
 	// the base bhop values
 	#pragma region Base Bhop values
@@ -170,23 +179,17 @@ private:
 		FVector PrevVelocity = FVector::Zero();
 	UPROPERTY(EditAnywhere, Category = "Bhop_Analysis") // takes the magnitude of the XY velocity vector (equal to speed in X/Y plane)
 		float XYspeedometer = 0.f;
-	UPROPERTY(EditAnywhere, Category = "Bhop_Analysis") // This is the deltatime saved from the tick component
+	UPROPERTY(Replicated, EditAnywhere, Category = "Bhop_Analysis") // This is the deltatime saved from the tick component
 		float FrameTime = 0.f;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The direction the ground acceleration force is applied
-		FVector GroundAccelDir = FVector::Zero();
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying ground acceleration
-		bool bApplyingGroundAccel = false;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The new ground acceleration based on the current bhop buildup
-		float CalcMaxWalkSpeed = 0.f;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // he direction the air acceleration force is applied
 		FVector AirAccelDir = FVector::Zero();
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying air acceleration
 		bool bApplyingAirAccel = false;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The new air acceleration based on the current bhop buildup
 		float CalcMaxAirSpeed = 0.f;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputDirection = FVector::Zero();
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputForwardVector = FVector::Zero();
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float InputForwardAxis = 0.f;
@@ -244,7 +247,7 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_RampSliding")
 		float RampslideThresholdFactor = 2.5f;
-	UPROPERTY(EditAnywhere, Category = "Bhop_RampSliding")
+	UPROPERTY(Replicated, EditAnywhere, Category = "Bhop_RampSliding")
 		float RampMomentumFactor = 1.f;
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_GroundAccel")
@@ -276,6 +279,10 @@ private:
 	UPROPERTY()
 		uint32 NumberOfTimesPogoResetFrictionUUID = 0;
 
+	UPROPERTY(EditAnywhere, Category = "Bhop_Other")
+		uint32 DebugCharacterName = 0;
+
+
 //////////////////////////////////////////////////////////////////////////
 // Animations and Montages												//
 //////////////////////////////////////////////////////////////////////////
@@ -285,6 +292,6 @@ private:
 // Getters and Setters													//
 //////////////////////////////////////////////////////////////////////////
 public:
-
+	void PrintToScreen(FColor color, FString message);
 
 };
