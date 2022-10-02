@@ -78,6 +78,8 @@ private:
 		class USoundCue* LegBonkSound;
 	UPROPERTY(EditAnywhere, Category = "Audio")
 		class USoundCue* JumpLandSound;
+	UPROPERTY(EditAnywhere, Category = "Audio")
+		class USoundCue* JumpSound;
 
 	#pragma region Reset Friction
 	UFUNCTION(Server, Reliable)
@@ -115,13 +117,13 @@ private:
 
 	#pragma region Ground Acceleration Functions
 	UFUNCTION() 
-		void AccelerateGround(FVector& OutGroundAccelDir, bool& OutbApplyingGroundAccel, float& OutCalcMaxWalkSpeed);
+		void AccelerateGround();
 	UFUNCTION(Server, Reliable)
-		void ServerAccelerateGroundReplication(const FVector GroundAccelDir, const float CalcMaxWalk);
+		void ServerAccelerateGroundReplication();
 	UFUNCTION()
-		void AccelerateGroundReplication(const FVector GroundAccelDir, const bool bApplyingGroundAccel, const float CalcMaxWalk);
+		void AccelerateGroundReplication();
 	UFUNCTION()
-		void HandleAccelerateGroundReplication(const FVector GroundAccelDir, const float CalcMaxWalk);
+		void HandleAccelerateGroundReplication();
 	#pragma endregion
 
 	#pragma region Air Acceleration
@@ -159,7 +161,7 @@ private:
 
 	#pragma region Bhop cap
 	UFUNCTION()
-		void BhopCap();
+		void ApplyBhopCap();
 	UFUNCTION(Server, Reliable)
 		void ServerBhopCapReplication();
 	UFUNCTION()
@@ -181,7 +183,13 @@ private:
 		float XYspeedometer = 0.f;
 	UPROPERTY(Replicated, EditAnywhere, Category = "Bhop_Analysis") // This is the deltatime saved from the tick component
 		float FrameTime = 0.f;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // he direction the air acceleration force is applied
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // the direction the ground acceleration impulse is applied
+		FVector GroundAccelDir = FVector::Zero();
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying ground acceleration
+		bool bApplyingGroundAccel = false;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // The new ground acceleration based on the current bhop buildup
+		float CalcMaxWalkSpeed = 0.f;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // the direction the air acceleration impulse is applied
 		FVector AirAccelDir = FVector::Zero();
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying air acceleration
 		bool bApplyingAirAccel = false;
@@ -198,10 +206,12 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float InputSideAxis = 0.f;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+		bool bJumpPressed = false;
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		bool bIsRampSliding = false;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		int32 NumberOfTimesRampSlided = 0;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultMaxWalkSpeed = 800.f; // CharacterMovement->MaxWalkSpeed
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultBraking = 200.f; // CharacterMovement->BrakingDecelerationWalking
@@ -215,6 +225,8 @@ private:
 		float TrimpLateralImpulse = 0.f;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float TrimpJumpImpulse = 0.f;
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
+		bool bApplyingBhopCap = false;
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_AirAccel")
 		bool bEnableCustomAirAccel = true;
@@ -222,7 +234,7 @@ private:
 		float AirAccelerate = 10.f;
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
-		bool bEnablePogo = true;
+		bool bEnablePogo = false; // This is buggy, and is not reliable in multiplayer. Tldr, work on it
 	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop")
 		bool bEnableBunnyHopCap = false;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Bhop") // you monster frisbee
@@ -245,6 +257,11 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Bhop_Trimping")
 		float TrimpUpLateralSlow = 0.f;
 
+	UPROPERTY(EditAnywhere, Category = "Bhop_Cap")
+		FVector BhopCapVector = FVector::Zero();
+	UPROPERTY(EditAnywhere, Category = "Bhop_Cap")
+		float bhopCapNewSpeed = 0.f;
+
 	UPROPERTY(EditAnywhere, Category = "Bhop_RampSliding")
 		float RampslideThresholdFactor = 2.5f;
 	UPROPERTY(Replicated, EditAnywhere, Category = "Bhop_RampSliding")
@@ -257,6 +274,8 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
 		float LandingSoundCooldownTotal = 0.f;
+	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
+		float JumpSoundCooldownTotal = 0.f;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
 		float LegBreakThreshold = 2.5f;
 	UPROPERTY(EditAnywhere, Category = "Bhop_Audio")
@@ -292,6 +311,8 @@ private:
 // Getters and Setters													//
 //////////////////////////////////////////////////////////////////////////
 public:
+	FORCEINLINE float GetSpeedometer() { return XYspeedometer; };
 	void PrintToScreen(FColor color, FString message);
+
 
 };

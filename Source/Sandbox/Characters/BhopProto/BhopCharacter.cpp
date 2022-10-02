@@ -19,6 +19,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 //#include "Components/WidgetComponent.h"
+#include "Components/PrimitiveComponent.h"
 
 // Types
 #include "AI/Navigation/NavigationTypes.h"
@@ -163,7 +164,6 @@ void ABhopCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	// Auxillery movements
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ABhopCharacter::StartJump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ABhopCharacter::StopJump);
-	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &ABhopCharacter::StartSprint);
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &ABhopCharacter::StopSprint);
 
@@ -181,7 +181,8 @@ void ABhopCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABhopCharacter, InputDirection);
 	DOREPLIFETIME(ABhopCharacter, FrameTime);
 	DOREPLIFETIME(ABhopCharacter, RampMomentumFactor);
-	// ApplyingBhopCap
+	DOREPLIFETIME(ABhopCharacter, DefaultMaxWalkSpeed);
+	DOREPLIFETIME(ABhopCharacter, bApplyingBhopCap);
 	// ImpulseVector
 }
 #pragma endregion
@@ -233,7 +234,7 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 	const EMovementMode NewMovementMode = CachedCharacterMovement->MovementMode;
 
 	// Original Functionality
-	if (!bPressedJump || !CachedCharacterMovement->IsFalling())
+	if (!bJumpPressed || !CachedCharacterMovement->IsFalling())
 	{
 		ResetJumpState();
 	}
@@ -282,13 +283,13 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 		LandingSoundCooldownTotal = LandSoundCooldown + UKismetSystemLibrary::GetGameTimeInSeconds(this);
 
 		// bhop easy mode (good for ue debugging)
-		if (bEnablePogo && bPressedJump)
+		if (bEnablePogo && bJumpPressed)
 		{
-			// TODO: BunnyHopAndTrimpLogic
+			BhopAndTrimpLogic();
 		}
 		else
 		{
-			// Create a delay for pogo reseting the friction 
+			// time window upon landing before friction applied (frame delay allows maintaining speed while bhopping) Increasing this delay more than a few frames may result in undesired effects.Default = 1 frame
 			FLatentActionInfo StuffTodoOnComplete; // https://www.reddit.com/r/unrealengine/comments/b1t1d8/how_to_wait_for/
 			StuffTodoOnComplete.CallbackTarget = this;
 			StuffTodoOnComplete.ExecutionFunction = FName("ResetFrictionDelay");
@@ -297,10 +298,6 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 			UKismetSystemLibrary::Delay(GetWorld(), FrameTime * 2.f, StuffTodoOnComplete);
 		}
 	}
-
-
-	// Bhop/Ramp/Trimp logic (trimp is when they fly up through the air after hopping on an edge at an angle)
-
 
 	// Broadcast this to replicate the movement! (This is the final piece of the original function
 	MovementModeChangedDelegate.Broadcast(this, PrevMovementMode, PrevCustomMode);
@@ -311,12 +308,45 @@ void ABhopCharacter::BhopAndTrimpLogic()
 {
 	RampCheck();
 	ApplyTrimp();
+	ApplyTrimpReplication();
 
-	// Trimp replication
+	bool handleJumpAndBhopCap = false;
 
 	// play sound if jump sound is not on cooldown
+	if (JumpSoundCooldownTotal < UKismetSystemLibrary::GetGameTimeInSeconds(this))
+	{
+		Jump();
 
-	// apply bunn hop cap and it's replication
+		// hoppity hop sound
+		if (JumpSound)
+		{
+			UGameplayStatics::PlaySoundAtLocation(
+				this,
+				JumpSound,
+				GetActorLocation()
+			);
+		}
+
+		handleJumpAndBhopCap = true;
+	}
+	else if (GetCharacterMovement() && GetCharacterMovement()->IsWalking())
+	{
+		Jump();
+		handleJumpAndBhopCap = true;
+	}
+
+	// Only do this logic if jumping
+	if (handleJumpAndBhopCap)
+	{
+		JumpSoundCooldownTotal = JumpSoundCooldown + UKismetSystemLibrary::GetGameTimeInSeconds(this);
+
+		// is bunny hop cap enabled?
+		if (bEnableBunnyHopCap)
+		{
+			ApplyBhopCap();
+			BhopCapReplication();
+		}
+	}
 }
 
 
@@ -386,30 +416,68 @@ void ABhopCharacter::HandleApplyTrimpReplication()
 {
 	if (GetCharacterMovement())
 	{
-
+		GetCharacterMovement()->JumpZVelocity = TrimpJumpImpulse;
+		GetCharacterMovement()->MaxWalkSpeed = TrimpLateralImpulse;
+		AddMovementInput(TrimpImpulse);
 	}
 }
 #pragma endregion
 
 
 #pragma region Bhop Cap
-void ABhopCharacter::BhopCap()
+void ABhopCharacter::ApplyBhopCap()
 {
+	// caps speed to: default maxwalk speed* bunnyhop Cap Factor. Adjust the bunnyhop Cap factor to alter the cap
+	float BhopCapSpeed = DefaultMaxWalkSpeed * BunnyHopCapFactor;
+
+	// Is the current speed more than bunnyhop cap?
+	if (XYspeedometer > BhopCapSpeed && GetCharacterMovement())
+	{
+		// find how much we are over cap, and reduce this excess speed by Bhop Bleed factor
+		float SpeedOverCap = (BhopCapSpeed - XYspeedometer) * BhopBleedFactor;
+
+		// predict our new speed after reduction
+		bhopCapNewSpeed = SpeedOverCap + BhopCapSpeed;
+		bApplyingBhopCap = true;
+		BhopCapVector = UKismetMathLibrary::Multiply_VectorFloat(PrevVelocity.GetSafeNormal(), SpeedOverCap);
+
+		// [Not used for multiplayer] apply impulse in opposite direction of our movement
+		GetCharacterMovement()->AddImpulse(BhopCapVector, true);
+		GetCharacterMovement()->MaxWalkSpeed = bhopCapNewSpeed;
+	}
+	else
+	{
+		bApplyingBhopCap = false;
+	}
 }
 
 
 void ABhopCharacter::BhopCapReplication()
 {
+	if (HasAuthority())
+	{
+		HandleBhopCapReplication();
+	}
+	else
+	{
+		ServerBhopCapReplication();
+	}
 }
 
 
 void ABhopCharacter::ServerBhopCapReplication_Implementation()
 {
+	HandleBhopCapReplication();
 }
 
 
 void ABhopCharacter::HandleBhopCapReplication()
 {
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = bhopCapNewSpeed;
+		AddMovementInput(BhopCapVector);
+	}
 }
 #pragma endregion
 
@@ -520,7 +588,7 @@ bool ABhopCharacter::RampCheck()
 		// get the normalized vectors of the previous and current directions we're traveling on the xy plane to find out whether we're sloping up or down a hill
 		RampCheckGroundAngleDotproduct = FVector::DotProduct(BreakHitResult.ImpactNormal, PrevVelocity.GetSafeNormal(0.0001));
 		float AngleOfRamp = UKismetMathLibrary::DegAcos(RampCheckGroundAngleDotproduct);
-		UE_LOG(LogTemp, Warning, TEXT("RampCheck::GroundAngleDotproduct: %f, angle of ramp: %f \n"), RampCheckGroundAngleDotproduct, AngleOfRamp);
+		//UE_LOG(LogTemp, Warning, TEXT("RampCheck::GroundAngleDotproduct: %f, angle of ramp: %f \n"), RampCheckGroundAngleDotproduct, AngleOfRamp - 90.f);
 
 		// Check if the angle is greater than 2 degrees (90 is a flat surface)
 		if (AngleOfRamp > 92.f) return true;
@@ -565,7 +633,7 @@ void ABhopCharacter::HandleAddRampMomentum()
 
 #pragma region Ground Acceleration
 // Apply Ground acceleration when turning
-void ABhopCharacter::AccelerateGround(FVector& OutGroundAccelDir, bool& OutbApplyingGroundAccel, float& OutCalcMaxWalkSpeed)
+void ABhopCharacter::AccelerateGround()
 {
 	// normalized vector indicating the desired movement direction based on the currently pressed keys
 	FVector RawInputDirection = UKismetMathLibrary::Multiply_VectorFloat(InputForwardVector, InputForwardAxis) + UKismetMathLibrary::Multiply_VectorFloat(InputSideVector, InputSideAxis);
@@ -583,53 +651,53 @@ void ABhopCharacter::AccelerateGround(FVector& OutGroundAccelDir, bool& OutbAppl
 	// Applying acceleration?
 	if (MaxAccelSpeed > 0.f)
 	{
-		OutbApplyingGroundAccel = true;
+		bApplyingGroundAccel = true;
 		float Accelspeed = FMath::Clamp((FrameTime * InputSpeed * GroundAccelerate), 0.f, MaxAccelSpeed);
 
 		// Calculate the impulse we will apply for acceleration
 		FVector ImpulseVector = UKismetMathLibrary::Multiply_VectorFloat(InputDirection, Accelspeed);
-		OutGroundAccelDir = InputDirection;
+		GroundAccelDir = InputDirection;
 
 		// Determine what new maxWalkSpeed should be to allow acceleration impulses to take effect
 		// Also the clamp is to prevent the default maxWalkSpeed from being set less than the normal walking speed
-		OutCalcMaxWalkSpeed = FMath::Clamp(UKismetMathLibrary::Add_VectorVector(PrevVelocity, ImpulseVector).Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
+		CalcMaxWalkSpeed = FMath::Clamp(UKismetMathLibrary::Add_VectorVector(PrevVelocity, ImpulseVector).Length(), DefaultMaxWalkSpeed, MaxSeaDemonSpeed);
 	}
 	else
 	{
-		OutbApplyingGroundAccel = false;
+		bApplyingGroundAccel = false;
 	}
 }
 
 
 // Replicate that applied ground acceleration
-void ABhopCharacter::AccelerateGroundReplication(const FVector GroundAccelDir, const bool bApplyingGroundAccel, const float CalcMaxWalkSpeed)
+void ABhopCharacter::AccelerateGroundReplication()
 {
-	if (HasAuthority())
+	if (bApplyingGroundAccel)
 	{
-		if (bApplyingGroundAccel || UKismetSystemLibrary::IsDedicatedServer(this))
+		if (HasAuthority())
 		{
-			HandleAccelerateGroundReplication(GroundAccelDir, CalcMaxWalkSpeed);
+			HandleAccelerateGroundReplication();
+		}
+		else 
+		{
+			ServerAccelerateGroundReplication();
 		}
 	}
-	else if (bApplyingGroundAccel)
-	{
-		ServerAccelerateGroundReplication(GroundAccelDir, CalcMaxWalkSpeed);
-	}
 }
 
 
-void ABhopCharacter::ServerAccelerateGroundReplication_Implementation(const FVector GroundAccelDir, const float CalcMaxWalkSpeed)
+void ABhopCharacter::ServerAccelerateGroundReplication_Implementation()
 {
-	HandleAccelerateGroundReplication(GroundAccelDir, CalcMaxWalkSpeed);
+	HandleAccelerateGroundReplication();
 }
 
 
-void ABhopCharacter::HandleAccelerateGroundReplication(const FVector GroundAccelDir, const float CalcMaxWalkSpeed)
+void ABhopCharacter::HandleAccelerateGroundReplication()
 {
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
-		UE_LOG(LogTemp, Warning, TEXT("Ground accel direction: %s"), *GroundAccelDir.ToCompactString());
+		//UE_LOG(LogTemp, Warning, TEXT("CalcMaxSpeed::Gnd: %f"), GetCharacterMovement()->MaxWalkSpeed);
 		AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
 }
@@ -702,6 +770,7 @@ void ABhopCharacter::HandleAccelerateAirReplication()
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = CalcMaxAirSpeed;
+		//UE_LOG(LogTemp, Warning, TEXT("CalcMaxSpeed::Air: %f"), GetCharacterMovement()->MaxWalkSpeed);
 		AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
 }
@@ -774,13 +843,9 @@ void ABhopCharacter::BaseMovementLogic()
 {
 	// Apply ground acceleration when turning (and replicate it)
 	if (bEnableGroundAccel)
-	{
-		FVector OutGroundAccelDir = FVector::Zero();
-		bool OutbApplyingGroundAccel = false;
-		float OutCalcMaxWalkSpeed = 0.f;
-		AccelerateGround(OutGroundAccelDir, OutbApplyingGroundAccel, OutCalcMaxWalkSpeed);
-		//UE_LOG(LogTemp, Warning, TEXT("OutGroundAccelDir: %s, OutbApplyingGroundAccel: %s, OutCalcMalkWalkSpeed: %f"), *OutGroundAccelDir.ToCompactString(), OutbApplyingGroundAccel ? TEXT("True") : TEXT("False"), OutCalcMaxWalkSpeed);
-		AccelerateGroundReplication(OutGroundAccelDir, OutbApplyingGroundAccel, OutCalcMaxWalkSpeed);
+	{ 
+		AccelerateGround();
+		AccelerateGroundReplication();
 	}
 	else // Apply the standard movement logic
 	{
@@ -809,8 +874,6 @@ void ABhopCharacter::MovementDelayLogic()
 #pragma endregion
 
 
-
-
 #pragma region Input Functions
 void ABhopCharacter::MoveForward(float Value)
 {
@@ -832,25 +895,22 @@ void ABhopCharacter::MoveRight(float Value)
 
 void ABhopCharacter::StartJump()
 {
-	bPressedJump = true;
+	bJumpPressed = true;
 	//if (bIsCrouched) UnCrouch();
-	BhopAndTrimpLogic();
+
+	// Are we walking when we press jump? (this prevents jump sound spamming when pressing jump key in midair)
+	if (GetCharacterMovement() && GetCharacterMovement()->IsWalking())
+	{
+		BhopAndTrimpLogic();
+	}	
 }
 
 
 void ABhopCharacter::StopJump()
 {
-	bPressedJump = false;
+	bJumpPressed = false;
 	StopJumping();
 }
-
-
-
-
-
-
-
-
 
 
 void ABhopCharacter::Turn(float Value)
