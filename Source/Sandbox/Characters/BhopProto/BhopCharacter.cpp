@@ -89,7 +89,7 @@ ABhopCharacter::ABhopCharacter()
 	// Character Movement: Jumping/Falling
 	GetCharacterMovement()->JumpZVelocity = 1000.f; // pertains to bhop
 	GetCharacterMovement()->BrakingDecelerationFalling = 0.f;
-	GetCharacterMovement()->AirControl = 1.f; // pertains to bhop
+	GetCharacterMovement()->AirControl = 100.f; // pertains to bhop
 	GetCharacterMovement()->AirControlBoostMultiplier = 2.f;
 	GetCharacterMovement()->AirControlBoostVelocityThreshold = 25.f;
 	GetCharacterMovement()->FallingLateralFriction = 0.f;
@@ -179,6 +179,11 @@ void ABhopCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps); // Net/UnrealNetwork is required to declare rep lifetimes
 
 	DOREPLIFETIME(ABhopCharacter, InputDirection);
+	DOREPLIFETIME(ABhopCharacter, InputForwardVector);
+	DOREPLIFETIME(ABhopCharacter, InputForwardAxis);
+	DOREPLIFETIME(ABhopCharacter, InputSideVector);
+	DOREPLIFETIME(ABhopCharacter, InputSideAxis);
+
 	DOREPLIFETIME(ABhopCharacter, FrameTime);
 	DOREPLIFETIME(ABhopCharacter, RampMomentumFactor);
 	DOREPLIFETIME(ABhopCharacter, DefaultMaxWalkSpeed);
@@ -192,7 +197,11 @@ void ABhopCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 void ABhopCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	// Get the character movement component
+	CachedCharacterMovement = GetCharacterMovement();
+	if (CachedCharacterMovement == nullptr) UE_LOG(LogTemp, Error, TEXT("ERROR: Character movement component not found, exiting OnMovementModeChanged!"));
+
 }
 
 
@@ -212,7 +221,7 @@ void ABhopCharacter::Tick(float DeltaTime)
 	FrameTime = DeltaTime;
 	PrevVelocity = GetVelocity();
 	XYspeedometer = PrevVelocity.Length();
-
+	//UE_LOG(LogTemp, Warning, TEXT("Time: %f, Tick::PrevVel: %s"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *PrevVelocity.ToCompactString());
 }
 #pragma endregion
 
@@ -220,11 +229,6 @@ void ABhopCharacter::Tick(float DeltaTime)
 #pragma region bhop (movement) logic
 void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PrevCustomMode)
 {
-	// This is being completely overrided because it's doing the broadcast call before we implement our own physics.
-
-	//////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Super OnMonkeyModeChange Logic																	//
-	//////////////////////////////////////////////////////////////////////////////////////////////////////
 	CachedCharacterMovement = GetCharacterMovement();
 	if (CachedCharacterMovement == nullptr)
 	{
@@ -233,21 +237,6 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 	}
 	const EMovementMode NewMovementMode = CachedCharacterMovement->MovementMode;
 
-	// Original Functionality
-	if (!bJumpPressed || !CachedCharacterMovement->IsFalling())
-	{
-		ResetJumpState();
-	}
-
-	// Record jump force start time for proxies. Allows us to expire the jump even if not continually ticking down a timer.
-	if (bProxyIsJumpForceApplied && CachedCharacterMovement->IsFalling())
-	{
-		ProxyJumpForceStartedTime = GetWorld()->GetTimeSeconds();
-	}
-
-	//////////////////////////////////////////////////////////////////////////////////////////////////////
-	//// Bunny hoppin functionality																	  ////
-	//////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Debugging (print the movement mode information)
 	const UEnum* MovementModeEnum = FindObject<UEnum>(ANY_PACKAGE, TEXT("EMovementMode"));
 	UE_LOG(LogTemp, Warning, TEXT("CharacterName: %s, Movement mode: %s, Prev Monke mode: %s")
@@ -289,18 +278,18 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 		}
 		else
 		{
+
 			// time window upon landing before friction applied (frame delay allows maintaining speed while bhopping) Increasing this delay more than a few frames may result in undesired effects.Default = 1 frame
 			FLatentActionInfo StuffTodoOnComplete; // https://www.reddit.com/r/unrealengine/comments/b1t1d8/how_to_wait_for/
 			StuffTodoOnComplete.CallbackTarget = this;
 			StuffTodoOnComplete.ExecutionFunction = FName("ResetFrictionDelay");
 			StuffTodoOnComplete.Linkage = 0;
 			StuffTodoOnComplete.UUID = NumberOfTimesPogoResetFrictionUUID;
-			UKismetSystemLibrary::Delay(GetWorld(), FrameTime * 2.f, StuffTodoOnComplete);
+			UKismetSystemLibrary::Delay(GetWorld(), FrameTime, StuffTodoOnComplete);
 		}
 	}
 
-	// Broadcast this to replicate the movement! (This is the final piece of the original function
-	MovementModeChangedDelegate.Broadcast(this, PrevMovementMode, PrevCustomMode);
+	Super::OnMovementModeChanged(PrevMovementMode, PrevCustomMode);
 }
 
 
@@ -395,13 +384,14 @@ void ABhopCharacter::ApplyTrimp()
 
 void ABhopCharacter::ApplyTrimpReplication()
 {
+	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
 	if (HasAuthority())
 	{
-		HandleApplyTrimpReplication();
+		ServerApplyTrimpReplication();
 	}
 	else
 	{
-		ServerApplyTrimpReplication();
+		HandleApplyTrimpReplication();
 	}
 }
 
@@ -412,7 +402,7 @@ void ABhopCharacter::ServerApplyTrimpReplication_Implementation()
 }
 
 
-void ABhopCharacter::HandleApplyTrimpReplication()
+void ABhopCharacter::HandleApplyTrimpReplication_Implementation()
 {
 	if (GetCharacterMovement())
 	{
@@ -429,7 +419,7 @@ void ABhopCharacter::ApplyBhopCap()
 {
 	// caps speed to: default maxwalk speed* bunnyhop Cap Factor. Adjust the bunnyhop Cap factor to alter the cap
 	float BhopCapSpeed = DefaultMaxWalkSpeed * BunnyHopCapFactor;
-
+	      
 	// Is the current speed more than bunnyhop cap?
 	if (XYspeedometer > BhopCapSpeed && GetCharacterMovement())
 	{
@@ -454,13 +444,14 @@ void ABhopCharacter::ApplyBhopCap()
 
 void ABhopCharacter::BhopCapReplication()
 {
+	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
 	if (HasAuthority())
 	{
-		HandleBhopCapReplication();
+		ServerBhopCapReplication();
 	}
 	else
 	{
-		ServerBhopCapReplication();
+		HandleBhopCapReplication();
 	}
 }
 
@@ -471,7 +462,7 @@ void ABhopCharacter::ServerBhopCapReplication_Implementation()
 }
 
 
-void ABhopCharacter::HandleBhopCapReplication()
+void ABhopCharacter::HandleBhopCapReplication_Implementation()
 {
 	if (GetCharacterMovement())
 	{
@@ -485,16 +476,14 @@ void ABhopCharacter::HandleBhopCapReplication()
 #pragma region Reset Friction
 void ABhopCharacter::ResetFriction()
 {
-	// I wonder if this causes lagginess when the client and server implementations don't align (This makes it so the server runs the same code for keeping track of the client's movements
-	// and it drops the movement functionality specific to that character everywhere else). So only the server keeps track of the details while the character's replicated (rpcs) movements are rendered across all clients
-	// If there's lagginess maybe creating a multicast that the server calls on this is the go forward decision. later edit (OnMovementChanged has a broadcast event that multicasts to prevent this (I thunk))
+	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
 	if (HasAuthority()) // On Server
 	{
-		HandleResetFriction();
+		ServerResetFriction();
 	}
 	else
 	{
-		ServerResetFriction();
+		HandleResetFriction();
 	}
 }
 
@@ -505,7 +494,7 @@ void ABhopCharacter::ServerResetFriction_Implementation()
 }
 
 
-void ABhopCharacter::HandleResetFriction()
+void ABhopCharacter::HandleResetFriction_Implementation()
 {
 	if (GetCharacterMovement())
 	{
@@ -529,14 +518,14 @@ void ABhopCharacter::ResetFrictionDelay()
 #pragma region Remove Friction
 void ABhopCharacter::RemoveFriction()
 {
-	// Same as what's said in ResetFriction
+	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
 	if (HasAuthority()) // On Server
 	{
-		HandleRemoveFriction();
+		ServerRemoveFriction();
 	}
 	else
 	{
-		ServerRemoveFriction();
+		HandleRemoveFriction();
 	}
 }
 
@@ -547,7 +536,7 @@ void ABhopCharacter::ServerRemoveFriction_Implementation()
 }
 
 
-void ABhopCharacter::HandleRemoveFriction()
+void ABhopCharacter::HandleRemoveFriction_Implementation()
 {
 	if (GetCharacterMovement())
 	{
@@ -605,11 +594,11 @@ void ABhopCharacter::AddRampMomentum()
 {
 	if (HasAuthority())
 	{
-		HandleAddRampMomentum();
+		ServerAddRampMomentum();
 	}
 	else 
 	{
-		ServerAddRampMomentum();
+		HandleAddRampMomentum();
 	}
 }
 
@@ -620,7 +609,7 @@ void ABhopCharacter::ServerAddRampMomentum_Implementation()
 }
 
 
-void ABhopCharacter::HandleAddRampMomentum()
+void ABhopCharacter::HandleAddRampMomentum_Implementation()
 {
 	if (GetCharacterMovement())
 	{
@@ -672,15 +661,16 @@ void ABhopCharacter::AccelerateGround()
 // Replicate that applied ground acceleration
 void ABhopCharacter::AccelerateGroundReplication()
 {
+	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
 	if (bApplyingGroundAccel)
 	{
 		if (HasAuthority())
 		{
-			HandleAccelerateGroundReplication();
+			ServerAccelerateGroundReplication();
 		}
 		else 
 		{
-			ServerAccelerateGroundReplication();
+			HandleAccelerateGroundReplication();
 		}
 	}
 }
@@ -692,12 +682,12 @@ void ABhopCharacter::ServerAccelerateGroundReplication_Implementation()
 }
 
 
-void ABhopCharacter::HandleAccelerateGroundReplication()
+void ABhopCharacter::HandleAccelerateGroundReplication_Implementation()
 {
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
-		//UE_LOG(LogTemp, Warning, TEXT("CalcMaxSpeed::Gnd: %f"), GetCharacterMovement()->MaxWalkSpeed);
+		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, Direction::Gnd: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *GroundAccelDir.ToCompactString(), CalcMaxWalkSpeed);
 		AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
 }
@@ -745,16 +735,17 @@ void ABhopCharacter::AccelerateAir()
 
 void ABhopCharacter::AccelerateAirReplication()
 {
-	if (HasAuthority())
+	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
+	if (bApplyingAirAccel)
 	{
-		if (bApplyingAirAccel || UKismetSystemLibrary::IsDedicatedServer(this))
+		if (HasAuthority())
+		{
+			ServerAccelerateAirReplication();
+		}
+		else
 		{
 			HandleAccelerateAirReplication();
 		}
-	}
-	else if (bApplyingAirAccel)
-	{
-		ServerAccelerateAirReplication();
 	}
 }
 
@@ -765,12 +756,12 @@ void ABhopCharacter::ServerAccelerateAirReplication_Implementation()
 }
 
 
-void ABhopCharacter::HandleAccelerateAirReplication()
+void ABhopCharacter::HandleAccelerateAirReplication_Implementation()
 {
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = CalcMaxAirSpeed;
-		//UE_LOG(LogTemp, Warning, TEXT("CalcMaxSpeed::Air: %f"), GetCharacterMovement()->MaxWalkSpeed);
+		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, CalcMaxSpeed::Air: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *AirAccelDir.ToCompactString(), CalcMaxAirSpeed);
 		AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
 }
@@ -816,6 +807,7 @@ void ABhopCharacter::HandleMovement()
 			// In the case that we just got out of rampsliding, then we add a momentum force to prevent stickiness when exiting the rampslide
 			if (bIsRampSliding)
 			{
+				UE_LOG(LogTemp, Warning, TEXT("Adding Ramp momentum"));
 				AddRampMomentum();
 
 				// Then create a delay before applying the friction again
@@ -829,10 +821,7 @@ void ABhopCharacter::HandleMovement()
 			}
 			else // If we weren't rampsliding, then handle the base movement logic
 			{
-				if (bEnableGroundAccel)
-				{
-					BaseMovementLogic();
-				}
+				BaseMovementLogic();
 			}
 		}
 	}
@@ -857,7 +846,6 @@ void ABhopCharacter::BaseMovementLogic()
 
 void ABhopCharacter::MovementDelayLogic()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Calling the movement delay logic function!"));
 
 	// Reset the friction and set wasRampSliding to false
 	bIsRampSliding = false;
@@ -877,20 +865,88 @@ void ABhopCharacter::MovementDelayLogic()
 #pragma region Input Functions
 void ABhopCharacter::MoveForward(float Value)
 {
+	/* My functionality 
 	InputForwardAxis = Value;
 	InputForwardVector = GetActorForwardVector();
 
 	HandleMovement();
+	*/
+
+	
+	if ((Controller != nullptr) && (Value != 0.0f))
+	{
+		// Find out which way is forward
+		const FRotator Rotation = Controller->GetControlRotation();
+		const FRotator YawRotation(0, Rotation.Yaw, 0);
+
+		// Get forward vector
+		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		//AddMovementInput(Direction, Value);
+
+		// Replication
+		if (HasAuthority())
+		{
+			ServerHandleMovementReplication(Direction, Value);
+		}
+		else
+		{
+			ClientHandleMovementReplication(Direction, Value);
+		}
+	}
 }
 
 
 void ABhopCharacter::MoveRight(float Value)
 {
+	/* My functionality 
 	InputSideAxis = Value;
 	InputSideVector = GetActorRightVector();
 
 	HandleMovement();
+	*/
+
+	if ((Controller != nullptr) && (Value != 0.0f))
+	{
+		// Find out which way is right
+		const FRotator Rotation = Controller->GetControlRotation();
+		const FRotator YawRotation(0, Rotation.Yaw, 0);
+
+		// Get right vector 
+		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+		// Add movement in that direction
+		//AddMovementInput(Direction, Value);
+
+		// Replication
+		if (HasAuthority())
+		{
+			ServerHandleMovementReplication(Direction, Value);
+		}
+		else
+		{
+			ClientHandleMovementReplication(Direction, Value);
+		}
+	}
 }
+
+
+void ABhopCharacter::ServerHandleMovementReplication_Implementation(FVector Direction, float Value)
+{
+	ClientHandleMovementReplication(Direction, Value);
+}
+
+
+void ABhopCharacter::ClientHandleMovementReplication_Implementation(FVector Direction, float Value)
+{
+	UE_LOG(LogTemp, Warning, TEXT("CalcDirection::Air: %s, MaxWalkSpeed: %f"), *Direction.ToCompactString(), GetCharacterMovement()->MaxWalkSpeed);
+	AddMovementInput(Direction, Value);
+}
+
+
+
+
+
+
 
 
 void ABhopCharacter::StartJump()

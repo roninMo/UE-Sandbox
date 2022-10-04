@@ -82,20 +82,20 @@ private:
 		class USoundCue* JumpSound;
 
 	#pragma region Reset Friction
-	UFUNCTION(Server, Reliable)
-		void ServerResetFriction();
 	UFUNCTION()
 		void ResetFriction();
-	UFUNCTION()
+	UFUNCTION(Server, Reliable)
+		void ServerResetFriction();
+	UFUNCTION(NetMulticast, Reliable)
 		void HandleResetFriction();
 	#pragma endregion
 
 	#pragma region Remove Friction
-	UFUNCTION(Server, Reliable)
-		void ServerRemoveFriction();
 	UFUNCTION()
 		void RemoveFriction();
-	UFUNCTION()
+	UFUNCTION(Server, Reliable)
+		void ServerRemoveFriction();
+	UFUNCTION(NetMulticast, Reliable)
 		void HandleRemoveFriction();
 	#pragma endregion
 
@@ -107,33 +107,33 @@ private:
 	#pragma endregion
 
 	#pragma region Add Ramp Momentum
-	UFUNCTION(Server, Reliable)
-		void ServerAddRampMomentum();
 	UFUNCTION()
 		void AddRampMomentum();
-	UFUNCTION()
+	UFUNCTION(Server, Reliable)
+		void ServerAddRampMomentum();
+	UFUNCTION(NetMulticast, Reliable)
 		void HandleAddRampMomentum();
 	#pragma endregion
 
 	#pragma region Ground Acceleration Functions
 	UFUNCTION() 
 		void AccelerateGround();
-	UFUNCTION(Server, Reliable)
-		void ServerAccelerateGroundReplication();
 	UFUNCTION()
 		void AccelerateGroundReplication();
-	UFUNCTION()
+	UFUNCTION(Server, Reliable)
+		void ServerAccelerateGroundReplication();
+	UFUNCTION(NetMulticast, Reliable)
 		void HandleAccelerateGroundReplication();
 	#pragma endregion
 
 	#pragma region Air Acceleration
 	UFUNCTION()
 		void AccelerateAir();
-	UFUNCTION(Server, Reliable)
-		void ServerAccelerateAirReplication();
 	UFUNCTION()
 		void AccelerateAirReplication();
-	UFUNCTION()
+	UFUNCTION(Server, Reliable)
+		void ServerAccelerateAirReplication();
+	UFUNCTION(NetMulticast, Reliable)
 		void HandleAccelerateAirReplication();
 	#pragma endregion
 
@@ -151,25 +151,33 @@ private:
 		void BhopAndTrimpLogic();
 	UFUNCTION()
 		void ApplyTrimp();
-	UFUNCTION(Server, Reliable)
-		void ServerApplyTrimpReplication();
 	UFUNCTION()
 		void ApplyTrimpReplication();
-	UFUNCTION()
+	UFUNCTION(Server, Reliable)
+		void ServerApplyTrimpReplication();
+	UFUNCTION(NetMulticast, Reliable)
 		void HandleApplyTrimpReplication();
 	#pragma endregion
 
 	#pragma region Bhop cap
 	UFUNCTION()
 		void ApplyBhopCap();
-	UFUNCTION(Server, Reliable)
-		void ServerBhopCapReplication();
 	UFUNCTION()
 		void BhopCapReplication();
-	UFUNCTION()
+	UFUNCTION(Server, Reliable)
+		void ServerBhopCapReplication();
+	UFUNCTION(NetMulticast, Reliable)
 		void HandleBhopCapReplication();
 	#pragma endregion
 	
+
+
+
+	UFUNCTION(Server, Reliable)
+		void ServerHandleMovementReplication(FVector Direction, float Value);
+	UFUNCTION(NetMulticast, Reliable)
+		void ClientHandleMovementReplication(FVector Direction, float Value);
+
 
 	// Other bhop functions
 	UFUNCTION()
@@ -182,7 +190,7 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Bhop_Analysis") // takes the magnitude of the XY velocity vector (equal to speed in X/Y plane)
 		float XYspeedometer = 0.f;
 	UPROPERTY(Replicated, EditAnywhere, Category = "Bhop_Analysis") // This is the deltatime saved from the tick component
-		float FrameTime = 0.f;
+		float FrameTime = 1.f;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // the direction the ground acceleration impulse is applied
 		FVector GroundAccelDir = FVector::Zero();
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis") // Whether they're applying ground acceleration
@@ -199,11 +207,11 @@ private:
 		FVector InputDirection = FVector::Zero();
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputForwardVector = FVector::Zero();
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		float InputForwardAxis = 0.f;
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputSideVector = FVector::Zero();
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		float InputSideAxis = 0.f;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		bool bJumpPressed = false;
