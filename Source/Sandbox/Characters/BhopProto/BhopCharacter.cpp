@@ -229,6 +229,10 @@ void ABhopCharacter::Tick(float DeltaTime)
 #pragma region bhop (movement) logic
 void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PrevCustomMode)
 {
+	Super::OnMovementModeChanged(PrevMovementMode, PrevCustomMode);
+	return;
+
+	// nulled out
 	CachedCharacterMovement = GetCharacterMovement();
 	if (CachedCharacterMovement == nullptr)
 	{
@@ -686,7 +690,7 @@ void ABhopCharacter::HandleAccelerateGroundReplication_Implementation()
 {
 	if (GetCharacterMovement())
 	{
-		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
+		//GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
 		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, Direction::Gnd: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *GroundAccelDir.ToCompactString(), CalcMaxWalkSpeed);
 		AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
@@ -760,7 +764,7 @@ void ABhopCharacter::HandleAccelerateAirReplication_Implementation()
 {
 	if (GetCharacterMovement())
 	{
-		GetCharacterMovement()->MaxWalkSpeed = CalcMaxAirSpeed;
+		//GetCharacterMovement()->MaxWalkSpeed = CalcMaxAirSpeed;
 		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, CalcMaxSpeed::Air: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *AirAccelDir.ToCompactString(), CalcMaxAirSpeed);
 		AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
@@ -872,7 +876,6 @@ void ABhopCharacter::MoveForward(float Value)
 	HandleMovement();
 	*/
 
-	
 	if ((Controller != nullptr) && (Value != 0.0f))
 	{
 		// Find out which way is forward
