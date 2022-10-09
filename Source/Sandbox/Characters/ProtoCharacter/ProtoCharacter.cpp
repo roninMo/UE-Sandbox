@@ -57,7 +57,7 @@ AProtoCharacter::AProtoCharacter()
 	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of the movement input
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 360.0f, 0.0f); // I think this is nulled out by our acceleration forces
 	bUseControllerRotationYaw = true; // This off with OrientRotationMovement on lets the character rotation be independent from walking direction (keep it on for bhopping) -> set it to false when standing still perhaps
-
+	
 	#pragma region Get character movement compendium
 	// CharacterMovement (General Settings)
 	GetCharacterMovement()->GravityScale = 2.8f; // pertains to bhop

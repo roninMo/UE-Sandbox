@@ -18,7 +18,7 @@ class SANDBOX_API ABhopHud : public AHUD
 public:
 	virtual void DrawHUD() override;
 
-	// To add this class in a blueprint, implement it with a TSubClassOf
+	// To add this class in a blueprint, implement it with        a TSubClassOf
 	UPROPERTY()
 		class UCharacterOverlay* CharacterOverlay;
 	UPROPERTY(EditAnywhere, Category = "Configuration")

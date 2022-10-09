@@ -4,10 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+
+// MultiplayerMovementPlugin
+#include "../../../../Plugins/MultiplayerMovementPlugin/Source/MultiplayerMovementPlugin/Public/MultiCharacter.h"
+
 #include "BhopCharacter.generated.h"
 
+
+class UMyCharacterMovementComponent; // MultiplayerMovementPlugin
 UCLASS()
-class SANDBOX_API ABhopCharacter : public ACharacter
+class SANDBOX_API ABhopCharacter : public AMultiCharacter
 {
 	GENERATED_BODY()
 
@@ -17,7 +23,7 @@ class SANDBOX_API ABhopCharacter : public ACharacter
 // Base functions and components										//
 //////////////////////////////////////////////////////////////////////////
 public:
-	ABhopCharacter();
+	ABhopCharacter(const class FObjectInitializer& ObjectInitializer);
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -169,15 +175,6 @@ private:
 	UFUNCTION(NetMulticast, Reliable)
 		void HandleBhopCapReplication();
 	#pragma endregion
-	
-
-
-
-	UFUNCTION(Server, Reliable)
-		void ServerHandleMovementReplication(FVector Direction, float Value);
-	UFUNCTION(NetMulticast, Reliable)
-		void ClientHandleMovementReplication(FVector Direction, float Value);
-
 
 	// Other bhop functions
 	UFUNCTION()
@@ -205,13 +202,13 @@ private:
 		float CalcMaxAirSpeed = 0.f;
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputDirection = FVector::Zero();
-	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputForwardVector = FVector::Zero();
-	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float InputForwardAxis = 0.f;
-	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		FVector InputSideVector = FVector::Zero();
-	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
+	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float InputSideAxis = 0.f;
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		bool bJumpPressed = false;
@@ -221,8 +218,6 @@ private:
 		int32 NumberOfTimesRampSlided = 0;
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultMaxWalkSpeed = 800.f; // CharacterMovement->MaxWalkSpeed
-	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
-		float DefaultBraking = 200.f; // CharacterMovement->BrakingDecelerationWalking
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
 		float DefaultFriction = 8.f; // CharacterMovement->GroundFriction
 	UPROPERTY(VisibleAnywhere, Category = "Bhop_Analysis")
@@ -302,7 +297,7 @@ private:
 	#pragma endregion
 
 	UPROPERTY() // Our own stored reference of the variable to avoid constant get calls
-		TObjectPtr<UCharacterMovementComponent> CachedCharacterMovement;
+		TObjectPtr<UMyCharacterMovementComponent> CachedCharacterMovement;
 	UPROPERTY()
 		uint32 NumberOfTimesPogoResetFrictionUUID = 0;
 
@@ -320,6 +315,8 @@ private:
 //////////////////////////////////////////////////////////////////////////
 public:
 	FORCEINLINE float GetSpeedometer() { return XYspeedometer; };
+	float GetDefaultMaxWalkSpeed();
+	float GetFriction();
 	void PrintToScreen(FColor color, FString message);
 
 

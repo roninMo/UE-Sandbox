@@ -17,7 +17,10 @@ class SANDBOX_API ABhopController : public APlayerController
 		
 public:
 	virtual void Tick(float DeltaTime) override;
+
 	void SetHUDSpeedometer();
+	void SetHUDefaultMaxWalkSpeed();
+	void SetHUDFricton();
 
 
 protected:

@@ -18,6 +18,10 @@ class SANDBOX_API UCharacterOverlay : public UUserWidget
 public:
 	UPROPERTY(meta = (BindWidget))
 		class UTextBlock* SpeedometerValue;
+	UPROPERTY(meta = (BindWidget))
+		class UTextBlock* DefaultMaxWalkSpeedValue;
+	UPROPERTY(meta = (BindWidget))
+		class UTextBlock* FrictionValue;
 
 
 };
