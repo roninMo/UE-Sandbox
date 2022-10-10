@@ -8,18 +8,17 @@ public class Sandbox : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { 
-			"GameplayAbilities", 
-			"GameplayTags", 
-			"GameplayTasks",
-
-            "MultiplayerMovementPlugin",
-
+		PublicDependencyModuleNames.AddRange(new string[] {
             "Core", 
 			"CoreUObject", 
 			"Engine", 
 			"InputCore", 
 			"HeadMountedDisplay" 
+		});
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			"GameplayAbilities",
+			"GameplayTags",
+			"GameplayTasks",
 		});
 	}
 }

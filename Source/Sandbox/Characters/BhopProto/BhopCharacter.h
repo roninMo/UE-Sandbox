@@ -5,15 +5,14 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 
-// MultiplayerMovementPlugin
-#include "../../../../Plugins/MultiplayerMovementPlugin/Source/MultiplayerMovementPlugin/Public/MultiCharacter.h"
+// Gameplay Ability System
+#include "AbilitySystemInterface.h"
 
 #include "BhopCharacter.generated.h"
 
 
-class UMyCharacterMovementComponent; // MultiplayerMovementPlugin
 UCLASS()
-class SANDBOX_API ABhopCharacter : public AMultiCharacter
+class SANDBOX_API ABhopCharacter : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -23,7 +22,7 @@ class SANDBOX_API ABhopCharacter : public AMultiCharacter
 // Base functions and components										//
 //////////////////////////////////////////////////////////////////////////
 public:
-	ABhopCharacter(const class FObjectInitializer& ObjectInitializer);
+	ABhopCharacter();
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -32,6 +31,7 @@ public:
 
 	// overriding this to properly replicate simulated proxies movement: https://www.udemy.com/course/unreal-engine-5-cpp-multiplayer-shooter/learn/lecture/31515548#questions
 	//virtual void OnRep_ReplicatedMovement() override;
+
 
 protected:
 	virtual void BeginPlay() override;
@@ -297,7 +297,7 @@ private:
 	#pragma endregion
 
 	UPROPERTY() // Our own stored reference of the variable to avoid constant get calls
-		TObjectPtr<UMyCharacterMovementComponent> CachedCharacterMovement;
+		TObjectPtr<UCharacterMovementComponent> CachedCharacterMovement;
 	UPROPERTY()
 		uint32 NumberOfTimesPogoResetFrictionUUID = 0;
 
@@ -306,9 +306,33 @@ private:
 
 
 //////////////////////////////////////////////////////////////////////////
+// Gameplay Ability System												//
+//////////////////////////////////////////////////////////////////////////
+public:
+	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	virtual void PossessedBy(AController* NewController) override; // Initialize ability system on Server call
+	virtual void OnRep_PlayerState() override; // Initialize ability system on Client call
+
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attribute Gas")
+		class UProtoASC* AbilitySystemComponent;
+	UPROPERTY()
+		class UProtoAttributeSet* Attributes;
+
+
+protected:
+	virtual void InitializeAttributes();
+	virtual void GiveBaseAbilities();
+
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Attribute Gas")
+		TSubclassOf<class UGameplayEffect> DefaultAttributeEffect;
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Attribute Gas")
+		TArray<TSubclassOf<class UProtoGasGameplayAbility>> DefaultAbilties;	
+
+
+//////////////////////////////////////////////////////////////////////////
 // Animations and Montages												//
 //////////////////////////////////////////////////////////////////////////
-
 
 //////////////////////////////////////////////////////////////////////////
 // Getters and Setters													//

@@ -20,14 +20,19 @@
 #include "Components/CapsuleComponent.h"
 //#include "Components/WidgetComponent.h"
 #include "Components/PrimitiveComponent.h"
-#include "../../../../Plugins/MultiplayerMovementPlugin/Source/MultiplayerMovementPlugin/Public/MyCharacterMovementComponent.h" // MultiplayerMovementPlugin
 
 // Types
 #include "AI/Navigation/NavigationTypes.h"
 #include "UObject/Class.h"
 
+// Gameplay Ability System plugin
+#include "Sandbox/GAS/ProtoASC.h"
+#include "Sandbox/GAS/ProtoAttributeSet.h"
+#include "Sandbox/GAS/ProtoGasGameplayAbility.h"
+
+
 #pragma region Constructors
-ABhopCharacter::ABhopCharacter(const class FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer.SetDefaultSubobjectClass<UMyCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
+ABhopCharacter::ABhopCharacter()
 {
  	// Base configuration and initialization of components
 	PrimaryActorTick.bCanEverTick = true;
@@ -148,9 +153,47 @@ ABhopCharacter::ABhopCharacter(const class FObjectInitializer& ObjectInitializer
 	NetUpdateFrequency = 66.f; // default update character on other machines 66 times a second (general fps defaults)
 	MinNetUpdateFrequency = 33.f; // To help with bandwidth and lagginess, allow a minNetUpdateFrequency, which is generally 33 in fps games
 	// The other important value is the server config tick rate, which is in the project defaultEngine.ini -> [/Script/OnlineSubsystemUtils.IpNetDriver] NetServerMaxTickRate = 60
+
+
+	//////////////////////// Ability System Component ////////////////////////
+	AbilitySystemComponent = CreateDefaultSubobject<UProtoASC>("AbilitySystemComponent");
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
+	Attributes = CreateDefaultSubobject<UProtoAttributeSet>("Attributes");
+
 }
 
 
+void ABhopCharacter::InitializeAttributes()
+{
+	if (AbilitySystemComponent && DefaultAttributeEffect)
+	{
+		// This is a context handle
+		FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
+		EffectContext.AddSourceObject(this);
+
+		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DefaultAttributeEffect, 1, EffectContext);
+
+		if (SpecHandle.IsValid())
+		{
+			FActiveGameplayEffectHandle GEHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		}
+	}
+}
+
+
+ void ABhopCharacter::GiveBaseAbilities()
+{
+	 if (HasAuthority() && AbilitySystemComponent)
+	 {
+		 for (TSubclassOf<UProtoGasGameplayAbility>& Ability : DefaultAbilties)
+		 {
+			 AbilitySystemComponent->GiveAbility(
+				 FGameplayAbilitySpec(Ability, 1, static_cast<int32>(Ability.GetDefaultObject()->AbilityInputID), this)
+			 );
+		 }
+	 }
+}
 void ABhopCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -171,6 +214,13 @@ void ABhopCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	PlayerInputComponent->BindAction("Equip", IE_Pressed, this, &ABhopCharacter::EquipButtonPress);
 	PlayerInputComponent->BindAction("UnEquip", IE_Released, this, &ABhopCharacter::UnEquipButtonPress);
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &ABhopCharacter::CrouchButtonPressed);
+
+	// Bind ability inputs
+	if (AbilitySystemComponent && InputComponent) // Sometimes the ability system is valid but the input wouldn't be and vice versa
+	{
+		const FGameplayAbilityInputBinds Binds("Confirm", "Cancel", "EGASAbilityInputID", static_cast<int32>(EGASAbilityInputID::Confirm), static_cast<int32>(EGASAbilityInputID::Cancel)); // Sync the enums with the ability names
+		AbilitySystemComponent->BindAbilityActivationToInputComponent(InputComponent, Binds);
+	}
 }
 
 
@@ -195,7 +245,7 @@ void ABhopCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	// Get the character movement component
-	CachedCharacterMovement = GetMultiplayerMovementComponent();
+	CachedCharacterMovement = GetCharacterMovement();
 	if (CachedCharacterMovement == nullptr) UE_LOG(LogTemp, Error, TEXT("ERROR: Character movement component not found, exiting OnMovementModeChanged!"));
 
 }
@@ -206,6 +256,30 @@ void ABhopCharacter::PostInitializeComponents()
 	Super::PostInitializeComponents();
 
 	// This function is the earliest you can access an actor component from the character clas
+}
+
+
+void ABhopCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	InitializeAttributes();
+	GiveBaseAbilities();
+}
+
+
+void ABhopCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	InitializeAttributes();
+	if (AbilitySystemComponent && InputComponent) // Sometimes the ability system is valid but the input wouldn't be and vice versa
+	{
+		const FGameplayAbilityInputBinds Binds("Confirm", "Cancel", "EGASAbilityInputID", static_cast<int32>(EGASAbilityInputID::Confirm), static_cast<int32>(EGASAbilityInputID::Cancel)); // Sync the enums with the ability names
+		AbilitySystemComponent->BindAbilityActivationToInputComponent(InputComponent, Binds);
+	}
 }
 
 
@@ -228,7 +302,7 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 	Super::OnMovementModeChanged(PrevMovementMode, PrevCustomMode);
 
 	// nulled out
-	CachedCharacterMovement = GetMultiplayerMovementComponent();
+	CachedCharacterMovement = GetCharacterMovement();
 	if (CachedCharacterMovement == nullptr)
 	{
 		UE_LOG(LogTemp, Error, TEXT("ERROR: Character movement component not found, exiting OnMovementModeChanged!"));
@@ -402,10 +476,10 @@ void ABhopCharacter::ServerApplyTrimpReplication_Implementation()
 
 void ABhopCharacter::HandleApplyTrimpReplication_Implementation()
 {
-	if (GetMultiplayerMovementComponent())
+	if (GetCharacterMovement())
 	{
-		//GetMultiplayerMovementComponent()->SetMaxJumpHeight(TrimpJumpImpulse);
-		GetMultiplayerMovementComponent()->SetMaxGroundSpeed(TrimpLateralImpulse);
+		GetCharacterMovement()->JumpZVelocity = TrimpJumpImpulse;
+		GetCharacterMovement()->MaxWalkSpeed = TrimpLateralImpulse;
 		AddMovementInput(TrimpImpulse);
 	}
 }
@@ -419,7 +493,7 @@ void ABhopCharacter::ApplyBhopCap()
 	float BhopCapSpeed = DefaultMaxWalkSpeed * BunnyHopCapFactor;
 	      
 	// Is the current speed more than bunnyhop cap?
-	if (XYspeedometer > BhopCapSpeed && GetMultiplayerMovementComponent())
+	if (XYspeedometer > BhopCapSpeed && GetCharacterMovement())
 	{
 		// find how much we are over cap, and reduce this excess speed by Bhop Bleed factor
 		float SpeedOverCap = (BhopCapSpeed - XYspeedometer) * BhopBleedFactor;
@@ -462,9 +536,9 @@ void ABhopCharacter::ServerBhopCapReplication_Implementation()
 
 void ABhopCharacter::HandleBhopCapReplication_Implementation()
 {
-	if (GetMultiplayerMovementComponent())
+	if (GetCharacterMovement())
 	{
-		GetMultiplayerMovementComponent()->SetMaxGroundSpeed(bhopCapNewSpeed);
+		GetCharacterMovement()->MaxWalkSpeed = bhopCapNewSpeed;
 		AddMovementInput(BhopCapVector);
 	}
 }
@@ -494,10 +568,10 @@ void ABhopCharacter::ServerResetFriction_Implementation()
 
 void ABhopCharacter::HandleResetFriction_Implementation()
 {
-	if (GetMultiplayerMovementComponent())
+	if (GetCharacterMovement())
 	{
-		GetMultiplayerMovementComponent()->SetMaxGroundSpeed(DefaultMaxWalkSpeed);
-		GetMultiplayerMovementComponent()->SetGroundFriction(DefaultFriction);
+		GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed;
+		GetCharacterMovement()->GroundFriction= DefaultFriction;
 	}
 }
 
@@ -534,9 +608,9 @@ void ABhopCharacter::ServerRemoveFriction_Implementation()
 
 void ABhopCharacter::HandleRemoveFriction_Implementation()
 {
-	if (GetMultiplayerMovementComponent())
+	if (GetCharacterMovement())
 	{
-		GetMultiplayerMovementComponent()->SetGroundFriction(0.f);
+		GetCharacterMovement()->GroundFriction = 0.f;
 	}
 }
 #pragma endregion
@@ -606,9 +680,9 @@ void ABhopCharacter::ServerAddRampMomentum_Implementation()
 
 void ABhopCharacter::HandleAddRampMomentum_Implementation()
 {
-	if (GetMultiplayerMovementComponent())
+	if (GetCharacterMovement())
 	{
-		GetMultiplayerMovementComponent()->SetMaxJumpHeight(DefaultJumpVelocity * RampMomentumFactor);
+		GetCharacterMovement()->JumpZVelocity = DefaultJumpVelocity * RampMomentumFactor;
 		Jump();
 	}
 }
@@ -679,9 +753,9 @@ void ABhopCharacter::ServerAccelerateGroundReplication_Implementation()
 
 void ABhopCharacter::HandleAccelerateGroundReplication_Implementation()
 {
-	if (GetMultiplayerMovementComponent())
+	if (GetCharacterMovement())
 	{
-		GetMultiplayerMovementComponent()->SetMaxGroundSpeed(CalcMaxWalkSpeed);
+		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
 		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, Direction::Gnd: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *GroundAccelDir.ToCompactString(), CalcMaxWalkSpeed);
 		AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
@@ -753,9 +827,9 @@ void ABhopCharacter::ServerAccelerateAirReplication_Implementation()
 
 void ABhopCharacter::HandleAccelerateAirReplication_Implementation()
 {
-	if (GetMultiplayerMovementComponent())
+	if (GetCharacterMovement())
 	{
-		GetMultiplayerMovementComponent()->SetMaxGroundSpeed(CalcMaxAirSpeed);
+		GetCharacterMovement()->MaxWalkSpeed = CalcMaxAirSpeed;
 		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, CalcMaxSpeed::Air: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *AirAccelDir.ToCompactString(), CalcMaxAirSpeed);
 		AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 	}
@@ -914,13 +988,13 @@ void ABhopCharacter::Lookup(float Value)
 
 void ABhopCharacter::StartSprint()
 {
-	GetMultiplayerMovementComponent()->SetMaxGroundSpeed(DefaultMaxWalkSpeed * 2);
+	if (GetCharacterMovement()) GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed * 2;
 }
 
 
 void ABhopCharacter::StopSprint()
 {
-	GetMultiplayerMovementComponent()->SetMaxGroundSpeed(DefaultMaxWalkSpeed);
+	if (GetCharacterMovement()) GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed;
 }
 
 
@@ -948,6 +1022,27 @@ void ABhopCharacter::UnEquipButtonPress()
 
 
 
+#pragma region Getters and Setters
+inline float ABhopCharacter::GetDefaultMaxWalkSpeed()
+{
+	if (GetCharacterMovement()) return GetCharacterMovement()->MaxWalkSpeed;
+	else return DefaultMaxWalkSpeed;
+}
+
+
+inline float ABhopCharacter::GetFriction()
+{
+	if (GetCharacterMovement()) return GetCharacterMovement()->GroundFriction;
+	else return DefaultFriction;
+}
+
+
+UAbilitySystemComponent* ABhopCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+#pragma endregion
+
 
 
 void ABhopCharacter::PrintToScreen(FColor color, FString message)
@@ -968,18 +1063,6 @@ void ABhopCharacter::PrintToScreen(FColor color, FString message)
 	}
 }
 
-
-
-inline float ABhopCharacter::GetDefaultMaxWalkSpeed()
-{
-	return GetCharacterMovement()->MaxWalkSpeed;
-}
-
-
-inline float ABhopCharacter::GetFriction()
-{
-	return GetCharacterMovement()->GroundFriction;
-}
 
 #pragma region Random Noteworthy stuff I found for coding and learning how to debug and whatever else tickles my fancy
 /* 
