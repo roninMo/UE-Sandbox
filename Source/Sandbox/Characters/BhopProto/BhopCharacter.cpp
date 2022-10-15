@@ -30,10 +30,17 @@
 #include "Sandbox/GAS/ProtoAttributeSet.h"
 #include "Sandbox/GAS/ProtoGasGameplayAbility.h"
 
+// Bhop Character Movement Component
+#include "BhopCharacterMovementComponent.h"
+
 
 #pragma region Constructors
-ABhopCharacter::ABhopCharacter()
+ABhopCharacter::ABhopCharacter(const FObjectInitializer& ObjectInitializer) // This super initializer is how you set the character movement component 
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UBhopCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
+	// Define reference for the bhop character movement component
+	BhopCharacterMovement = Cast<UBhopCharacterMovementComponent>(GetCharacterMovement());
+
  	// Base configuration and initialization of components
 	PrimaryActorTick.bCanEverTick = true;
 	SpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
@@ -50,93 +57,11 @@ ABhopCharacter::ABhopCharacter()
 	CharacterCam->bUsePawnControlRotation = false; // The follow camera should use the pawn control rotation as it's attached to the camera boom
 
 	// Player collision
+	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore); // To stop the capsule component from colliding with our camera
 	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore); // same here
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Block);
 	//GetMesh()->SetCollisionObjectType(ECC_SkeletalMesh); // For when you create your own collision channels
-
-	#pragma region Get character movement compendium
-	// CharacterMovement (General Settings)
-	GetCharacterMovement()->GravityScale = 2.8f; // pertains to bhop
-	GetCharacterMovement()->MaxAcceleration = 6009.f; // pertains to bhop
-	GetCharacterMovement()->BrakingFrictionFactor = 2.f;
-	GetCharacterMovement()->BrakingFriction = 0.f;
-	GetCharacterMovement()->bUseSeparateBrakingFriction = false;
-	GetCharacterMovement()->Mass = 100.f;
-	GetCharacterMovement()->DefaultLandMovementMode = EMovementMode::MOVE_Walking;
-	GetCharacterMovement()->DefaultWaterMovementMode = EMovementMode::MOVE_Swimming;
-
-	// Character Movement: Walking
-	GetCharacterMovement()->MaxStepHeight = 45.f;
-	GetCharacterMovement()->SetWalkableFloorAngle(44.765309);
-	GetCharacterMovement()->SetWalkableFloorZ(0.71);
-	GetCharacterMovement()->GroundFriction = 8.f;
-	GetCharacterMovement()->MaxWalkSpeed = 800.f; // pertains to bhop
-	GetCharacterMovement()->MaxWalkSpeedCrouched = 300.f;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 0.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 200.f; // pertains to bhop
-	GetCharacterMovement()->bSweepWhileNavWalking = true;
-	GetCharacterMovement()->bCanWalkOffLedges = true;
-	GetCharacterMovement()->bCanWalkOffLedgesWhenCrouching = false;
-	GetCharacterMovement()->bMaintainHorizontalGroundVelocity = false; // pertains to bhop
-	GetCharacterMovement()->bIgnoreBaseRotation = false;
-	GetCharacterMovement()->PerchRadiusThreshold = 0.f;
-	GetCharacterMovement()->PerchAdditionalHeight = 40.f;
-	GetCharacterMovement()->LedgeCheckThreshold = 4.f;
-	GetCharacterMovement()->bAlwaysCheckFloor = false;
-	GetCharacterMovement()->bUseFlatBaseForFloorChecks = false;
-
-	// Character Movement: Jumping/Falling
-	GetCharacterMovement()->JumpZVelocity = 1000.f; // pertains to bhop
-	GetCharacterMovement()->BrakingDecelerationFalling = 0.f;
-	GetCharacterMovement()->AirControl = 100.f; // pertains to bhop
-	GetCharacterMovement()->AirControlBoostMultiplier = 2.f;
-	GetCharacterMovement()->AirControlBoostVelocityThreshold = 25.f;
-	GetCharacterMovement()->FallingLateralFriction = 0.f;
-	GetCharacterMovement()->bImpartBaseVelocityX = true;
-	GetCharacterMovement()->bImpartBaseVelocityY = true;
-	GetCharacterMovement()->bImpartBaseVelocityZ = true;
-	GetCharacterMovement()->bImpartBaseAngularVelocity = true;
-	GetCharacterMovement()->bNotifyApex = false;
-	GetCharacterMovement()->JumpOffJumpZFactor = 0.5f;
-	GetCharacterMovement()->bApplyGravityWhileJumping = true;
-
-	// Character Movement (Networking)
-	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
-	GetCharacterMovement()->bNetworkSkipProxyPredictionOnNetUpdate = false;
-	GetCharacterMovement()->NetworkMaxSmoothUpdateDistance = 256.f;
-	GetCharacterMovement()->NetworkNoSmoothUpdateDistance = 384.f;
-	GetCharacterMovement()->NetworkMinTimeBetweenClientAckGoodMoves = 0.1f;
-	GetCharacterMovement()->NetworkMinTimeBetweenClientAdjustments = 0.1f;
-	GetCharacterMovement()->NetworkMinTimeBetweenClientAdjustmentsLargeCorrection = 0.05f;
-	GetCharacterMovement()->NetworkLargeClientCorrectionDistance = 15.f;
-	GetCharacterMovement()->bNetworkAlwaysReplicateTransformUpdateTimestamp = false;
-	GetCharacterMovement()->NetworkSimulatedSmoothLocationTime = 0.1f;
-	GetCharacterMovement()->NetworkSimulatedSmoothRotationTime = 0.05f;
-	GetCharacterMovement()->ListenServerNetworkSimulatedSmoothLocationTime = 0.04f;
-	GetCharacterMovement()->ListenServerNetworkSimulatedSmoothRotationTime = 0.033f;
-	GetCharacterMovement()->NetProxyShrinkRadius = 0.01f;
-	GetCharacterMovement()->NetProxyShrinkHalfHeight = 0.01f;
-
-	// Movement Capabilities
-	GetCharacterMovement()->NavAgentProps.AgentHeight = 48.f; // pertains to bhop (i thunk) TODO: Fix these (These are not being set properly, do it manualy)
-	GetCharacterMovement()->NavAgentProps.AgentRadius = 192.f; // pertains to bhop (i thunk) TODO: Fix these (These are not being set properly, do it manualy)
-	GetCharacterMovement()->NavAgentProps.AgentStepHeight = -1.f;
-	GetCharacterMovement()->NavAgentProps.NavWalkingSearchHeightScale = 0.5f;
-	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
-	GetCharacterMovement()->NavAgentProps.bCanJump = true;
-	GetCharacterMovement()->NavAgentProps.bCanWalk = true;
-	GetCharacterMovement()->NavAgentProps.bCanSwim = true;
-	GetCharacterMovement()->NavAgentProps.bCanFly = false;
-
-	// Movement Component
-	GetCharacterMovement()->bUpdateOnlyIfRendered = false;
-	GetCharacterMovement()->bAutoUpdateTickRegistration = true;
-	GetCharacterMovement()->bTickBeforeOwner = true;
-	GetCharacterMovement()->bAutoRegisterUpdatedComponent = true;
-	GetCharacterMovement()->bAutoRegisterPhysicsVolumeUpdates = true;
-	GetCharacterMovement()->bComponentShouldUpdatePhysicsVolume = true;
-	#pragma endregion     
 
 	//////////////////////// Configure the character movement ////////////////////////
 	// Movement component configuration (configure the movement (the movement for the character (the character's movement)))
@@ -149,10 +74,11 @@ ABhopCharacter::ABhopCharacter()
 	DefaultFriction = GetCharacterMovement()->GroundFriction;
 	DefaultJumpVelocity = GetCharacterMovement()->JumpZVelocity;
 
-	//////////////////////// Replication stuff (Server/Client rendering) ////////////////////////
+	//////////////////////// Replication stuff (Server/Client rendering) 
 	NetUpdateFrequency = 66.f; // default update character on other machines 66 times a second (general fps defaults)
 	MinNetUpdateFrequency = 33.f; // To help with bandwidth and lagginess, allow a minNetUpdateFrequency, which is generally 33 in fps games
 	// The other important value is the server config tick rate, which is in the project defaultEngine.ini -> [/Script/OnlineSubsystemUtils.IpNetDriver] NetServerMaxTickRate = 60
+	// also this which is especially crucial for implementing the gameplay ability system [SystemSettings] net.UseAdaptiveNetUpdateFrequency = 1
 
 
 	//////////////////////// Ability System Component ////////////////////////
@@ -244,10 +170,7 @@ void ABhopCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Get the character movement component
-	CachedCharacterMovement = GetCharacterMovement();
-	if (CachedCharacterMovement == nullptr) UE_LOG(LogTemp, Error, TEXT("ERROR: Character movement component not found, exiting OnMovementModeChanged!"));
-
+	InitCharacterMovement();
 }
 
 
@@ -263,6 +186,10 @@ void ABhopCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
+	// Get the character component if it was deleted when unpossessed
+	BhopCharacterMovement = Cast<UBhopCharacterMovementComponent>(GetCharacterMovement());
+
+	// Gameplay ability system init
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	InitializeAttributes();
 	GiveBaseAbilities();
@@ -300,17 +227,10 @@ void ABhopCharacter::Tick(float DeltaTime)
 void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PrevCustomMode)
 {
 	Super::OnMovementModeChanged(PrevMovementMode, PrevCustomMode);
-
-	// nulled out
-	CachedCharacterMovement = GetCharacterMovement();
-	if (CachedCharacterMovement == nullptr)
-	{
-		UE_LOG(LogTemp, Error, TEXT("ERROR: Character movement component not found, exiting OnMovementModeChanged!"));
-		return;
-	}
-	const EMovementMode NewMovementMode = CachedCharacterMovement->MovementMode;
+	InitCharacterMovement();
 
 	// Debugging (print the movement mode information)
+	const EMovementMode NewMovementMode = CachedCharacterMovement->MovementMode;
 	const UEnum* MovementModeEnum = FindObject<UEnum>(ANY_PACKAGE, TEXT("EMovementMode"));
 	UE_LOG(LogTemp, Warning, TEXT("CharacterName: %s, Movement mode: %s, Prev Monke mode: %s")
 		, *GetNameSafe(this)
@@ -329,15 +249,7 @@ void ABhopCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8
 			{
 				// We need to get the Z velocity when we are walking up ramps. Regular get velocity function shows 0 when walking so cannot be used.
 				// TODO: Implement condition bhop sound based on z velocity impulse
-
-				if (LegBonkSound)
-				{
-					UGameplayStatics::PlaySoundAtLocation(
-						this,
-						LegBonkSound,
-						GetActorLocation()
-					);
-				}
+				if (LegBonkSound) UGameplayStatics::PlaySoundAtLocation(this, LegBonkSound, GetActorLocation());
 			}
 		}
 
@@ -377,17 +289,7 @@ void ABhopCharacter::BhopAndTrimpLogic()
 	if (JumpSoundCooldownTotal < UKismetSystemLibrary::GetGameTimeInSeconds(this))
 	{
 		Jump();
-
-		// hoppity hop sound
-		if (JumpSound)
-		{
-			UGameplayStatics::PlaySoundAtLocation(
-				this,
-				JumpSound,
-				GetActorLocation()
-			);
-		}
-
+		if (JumpSound) UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
 		handleJumpAndBhopCap = true;
 	}
 	else if (GetCharacterMovement() && GetCharacterMovement()->IsWalking())
@@ -689,8 +591,7 @@ void ABhopCharacter::HandleAddRampMomentum_Implementation()
 #pragma endregion
 
 
-#pragma region Ground Acceleration
-// Apply Ground acceleration when turning
+#pragma region Acceleration Functions
 void ABhopCharacter::AccelerateGround()
 {
 	// normalized vector indicating the desired movement direction based on the currently pressed keys
@@ -724,46 +625,14 @@ void ABhopCharacter::AccelerateGround()
 	{
 		bApplyingGroundAccel = false;
 	}
+
+	// Apply the ground acceleration
+	//UE_LOG(LogTemp, Warning, TEXT("Time: %f, Direction::Gnd: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *GroundAccelDir.ToCompactString(), CalcMaxWalkSpeed);
+	GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(CalcMaxWalkSpeed);
+	AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 }
 
 
-// Replicate that applied ground acceleration
-void ABhopCharacter::AccelerateGroundReplication()
-{
-	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
-	if (bApplyingGroundAccel)
-	{
-		if (HasAuthority())
-		{
-			ServerAccelerateGroundReplication();
-		}
-		else 
-		{
-			HandleAccelerateGroundReplication();
-		}
-	}
-}
-
-
-void ABhopCharacter::ServerAccelerateGroundReplication_Implementation()
-{
-	HandleAccelerateGroundReplication();
-}
-
-
-void ABhopCharacter::HandleAccelerateGroundReplication_Implementation()
-{
-	if (GetCharacterMovement())
-	{
-		GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
-		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, Direction::Gnd: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *GroundAccelDir.ToCompactString(), CalcMaxWalkSpeed);
-		AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
-	}
-}
-#pragma endregion
-
-
-#pragma region AirAcceleration
 void ABhopCharacter::AccelerateAir()
 {
 	// normalized vector indicating the desired movement direction based on the currently pressed keys
@@ -799,40 +668,11 @@ void ABhopCharacter::AccelerateAir()
 	{
 		bApplyingAirAccel = false;
 	}
-}
 
-
-void ABhopCharacter::AccelerateAirReplication()
-{
-	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
-	if (bApplyingAirAccel)
-	{
-		if (HasAuthority())
-		{
-			ServerAccelerateAirReplication();
-		}
-		else
-		{
-			HandleAccelerateAirReplication();
-		}
-	}
-}
-
-
-void ABhopCharacter::ServerAccelerateAirReplication_Implementation()
-{
-	HandleAccelerateAirReplication();
-}
-
-
-void ABhopCharacter::HandleAccelerateAirReplication_Implementation()
-{
-	if (GetCharacterMovement())
-	{
-		GetCharacterMovement()->MaxWalkSpeed = CalcMaxAirSpeed;
-		//UE_LOG(LogTemp, Warning, TEXT("Time: %f, CalcMaxSpeed::Air: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *AirAccelDir.ToCompactString(), CalcMaxAirSpeed);
-		AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
-	}
+	// Apply the acceleration
+	//UE_LOG(LogTemp, Warning, TEXT("Time: %f, CalcMaxSpeed::Air: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *AirAccelDir.ToCompactString(), CalcMaxAirSpeed);
+	GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(CalcMaxAirSpeed);
+	AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 }
 #pragma endregion
 
@@ -846,17 +686,7 @@ void ABhopCharacter::HandleMovement()
 	{
 		RemoveFriction();
 		bIsRampSliding = false; 
-
-		// Is custom air acceleration enabled?
-		if (bEnableCustomAirAccel)
-		{
-			AccelerateAir();
-			AccelerateAirReplication();
-		}
-		else
-		{
-			BaseMovementLogic();
-		}
+		AccelerateAir();
 	}
 	else // On the ground like a scrub
 	{
@@ -867,9 +697,7 @@ void ABhopCharacter::HandleMovement()
 		{
 			RemoveFriction(); // When rampsliding we want to remove friction and allow "air control" for steering
 			bIsRampSliding = true; // This is set after rampsliding decision to understand when we EXIT a rampslide
-
 			AccelerateAir();
-			AccelerateAirReplication();
 		}
 		else
 		{
@@ -885,7 +713,6 @@ void ABhopCharacter::HandleMovement()
 				StuffTodoOnComplete.ExecutionFunction = FName("MovementDelayLogic");
 				StuffTodoOnComplete.Linkage = 0;
 				StuffTodoOnComplete.UUID = NumberOfTimesRampSlided;
-
 				UKismetSystemLibrary::Delay(GetWorld(), FrameTime * 2.f, StuffTodoOnComplete);
 			}
 			else // If we weren't rampsliding, then handle the base movement logic
@@ -903,7 +730,6 @@ void ABhopCharacter::BaseMovementLogic()
 	if (bEnableGroundAccel)
 	{ 
 		AccelerateGround();
-		AccelerateGroundReplication();
 	}
 	else // Apply the standard movement logic
 	{
@@ -936,7 +762,6 @@ void ABhopCharacter::MoveForward(float Value)
 {
 	InputForwardAxis = Value;
 	InputForwardVector = GetActorForwardVector();
-
 	HandleMovement();
 }
 
@@ -945,31 +770,28 @@ void ABhopCharacter::MoveRight(float Value)
 {
 	InputSideAxis = Value;
 	InputSideVector = GetActorRightVector();
-
 	HandleMovement();
 }
 
 
 
 
-
-
 void ABhopCharacter::StartJump()
 {
-	bJumpPressed = true;
-	//if (bIsCrouched) UnCrouch();
+	Jump();
 
+	//bJumpPressed = true;
 	// Are we walking when we press jump? (this prevents jump sound spamming when pressing jump key in midair)
-	if (GetCharacterMovement() && GetCharacterMovement()->IsWalking())
+	/*if (GetCharacterMovement() && GetCharacterMovement()->IsWalking())
 	{
 		BhopAndTrimpLogic();
-	}	
+	}*/	
 }
 
 
 void ABhopCharacter::StopJump()
 {
-	bJumpPressed = false;
+	//bJumpPressed = false;
 	StopJumping();
 }
 
@@ -988,13 +810,13 @@ void ABhopCharacter::Lookup(float Value)
 
 void ABhopCharacter::StartSprint()
 {
-	if (GetCharacterMovement()) GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed * 2;
+	if (GetBhopCharacterMovement()) GetBhopCharacterMovement()->SprintPressed();
 }
 
 
 void ABhopCharacter::StopSprint()
 {
-	if (GetCharacterMovement()) GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed;
+	if (GetBhopCharacterMovement()) GetBhopCharacterMovement()->SprintReleased();
 }
 
 
@@ -1023,6 +845,14 @@ void ABhopCharacter::UnEquipButtonPress()
 
 
 #pragma region Getters and Setters
+void ABhopCharacter::InitCharacterMovement()
+{
+	// Get the character movement component
+	CachedCharacterMovement = GetCharacterMovement();
+	if (CachedCharacterMovement == nullptr) UE_LOG(LogTemp, Error, TEXT("ERROR: Character movement component not found, exiting OnMovementModeChanged!"));
+}
+
+
 inline float ABhopCharacter::GetDefaultMaxWalkSpeed()
 {
 	if (GetCharacterMovement()) return GetCharacterMovement()->MaxWalkSpeed;

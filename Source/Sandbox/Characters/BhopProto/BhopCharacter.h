@@ -22,19 +22,19 @@ class SANDBOX_API ABhopCharacter : public ACharacter, public IAbilitySystemInter
 // Base functions and components										//
 //////////////////////////////////////////////////////////////////////////
 public:
-	ABhopCharacter();
+	ABhopCharacter(const FObjectInitializer& ObjectInitializer );
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PostInitializeComponents() override;
 	//virtual void Destroyed() override; // This is a replicated function, handle logic pertaining to character death in here for free
 
-	// overriding this to properly replicate simulated proxies movement: https://www.udemy.com/course/unreal-engine-5-cpp-multiplayer-shooter/learn/lecture/31515548#questions
-	//virtual void OnRep_ReplicatedMovement() override;
+	//virtual void OnRep_ReplicatedMovement() override; // overriding this to replicate simulated proxies movement: https://www.udemy.com/course/unreal-engine-5-cpp-multiplayer-shooter/learn/lecture/31515548#questions
 
 
 protected:
 	virtual void BeginPlay() override;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement) class UBhopCharacterMovementComponent* BhopCharacterMovementComponent;
 
 
 private:
@@ -72,6 +72,9 @@ private:
 //////////////////////////////////////////////////////////////////////////
 // Bunny Hopping Stuff													//
 //////////////////////////////////////////////////////////////////////////
+protected:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Movement)  UBhopCharacterMovementComponent* BhopCharacterMovement;
+
 private:
 	 /**
 	  * Called from CharacterMovementComponent to notify the character that the movement mode has changed.
@@ -121,26 +124,11 @@ private:
 		void HandleAddRampMomentum();
 	#pragma endregion
 
-	#pragma region Ground Acceleration Functions
+	#pragma region Acceleration Functions
 	UFUNCTION() 
 		void AccelerateGround();
 	UFUNCTION()
-		void AccelerateGroundReplication();
-	UFUNCTION(Server, Reliable)
-		void ServerAccelerateGroundReplication();
-	UFUNCTION(NetMulticast, Reliable)
-		void HandleAccelerateGroundReplication();
-	#pragma endregion
-
-	#pragma region Air Acceleration
-	UFUNCTION()
 		void AccelerateAir();
-	UFUNCTION()
-		void AccelerateAirReplication();
-	UFUNCTION(Server, Reliable)
-		void ServerAccelerateAirReplication();
-	UFUNCTION(NetMulticast, Reliable)
-		void HandleAccelerateAirReplication();
 	#pragma endregion
 
 	#pragma region Movement Input Air and Ground logic
@@ -305,6 +293,11 @@ private:
 		uint32 DebugCharacterName = 0;
 
 
+public:
+	/** Returns CharacterMovement subobject **/
+	FORCEINLINE class UBhopCharacterMovementComponent* GetBhopCharacterMovement() const { return BhopCharacterMovement; }
+
+
 //////////////////////////////////////////////////////////////////////////
 // Gameplay Ability System												//
 //////////////////////////////////////////////////////////////////////////
@@ -338,6 +331,7 @@ protected:
 // Getters and Setters													//
 //////////////////////////////////////////////////////////////////////////
 public:
+	void InitCharacterMovement();
 	FORCEINLINE float GetSpeedometer() { return XYspeedometer; };
 	float GetDefaultMaxWalkSpeed();
 	float GetFriction();
