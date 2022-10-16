@@ -322,6 +322,10 @@ void UBhopCharacterMovementComponent::OnMovementUpdated(float DeltaSeconds, cons
 	// Sprint logic
 	if (MovementMode == MOVE_Walking)
 	{
+		MaxWalkSpeed = Safe_BhopMaxWalkSpeed;
+		GroundFriction = Safe_BhopGroundFriction;
+		JumpZVelocity = Safe_BhopJumpZVelocity;
+
 		if (Safe_bWantsToSprnt)
 		{
 			if (MaxWalkSpeed < DefaultMaxSprintSpeed) MaxWalkSpeed = DefaultMaxSprintSpeed;
