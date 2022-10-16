@@ -90,83 +90,27 @@ private:
 	UPROPERTY(EditAnywhere, Category = "Audio")
 		class USoundCue* JumpSound;
 
-	#pragma region Reset Friction
-	UFUNCTION()
-		void ResetFriction();
-	UFUNCTION(Server, Reliable)
-		void ServerResetFriction();
-	UFUNCTION(NetMulticast, Reliable)
-		void HandleResetFriction();
-	#pragma endregion
 
-	#pragma region Remove Friction
-	UFUNCTION()
-		void RemoveFriction();
-	UFUNCTION(Server, Reliable)
-		void ServerRemoveFriction();
-	UFUNCTION(NetMulticast, Reliable)
-		void HandleRemoveFriction();
-	#pragma endregion
 
-	#pragma region Ramp Slide and Checks
-	UFUNCTION()
-		bool RamSlide();
-	UFUNCTION()
-		bool RampCheck();
-	#pragma endregion
+	UFUNCTION() void AccelerateGround();
+	UFUNCTION() void AccelerateAir();
+	UFUNCTION() void RemoveFriction();
+	UFUNCTION() void ResetFriction();
+	
+	UFUNCTION() bool RamSlide();
+	UFUNCTION() bool RampCheck();
 
-	#pragma region Add Ramp Momentum
-	UFUNCTION()
-		void AddRampMomentum();
-	UFUNCTION(Server, Reliable)
-		void ServerAddRampMomentum();
-	UFUNCTION(NetMulticast, Reliable)
-		void HandleAddRampMomentum();
-	#pragma endregion
+	UFUNCTION() void HandleMovement();
+	UFUNCTION() void BaseMovementLogic();
+	UFUNCTION() void MovementDelayLogic();
 
-	#pragma region Acceleration Functions
-	UFUNCTION() 
-		void AccelerateGround();
-	UFUNCTION()
-		void AccelerateAir();
-	#pragma endregion
+	UFUNCTION() void BhopAndTrimpLogic();
+	UFUNCTION() void ApplyTrimp();
+	UFUNCTION() void ApplyBhopCap();
 
-	#pragma region Movement Input Air and Ground logic
-	UFUNCTION() 
-		void HandleMovement();
-	UFUNCTION() 
-		void BaseMovementLogic();
-	UFUNCTION() 
-		void MovementDelayLogic();
-	#pragma endregion
-
-	#pragma region Bhop and Trimp Logic
-	UFUNCTION()
-		void BhopAndTrimpLogic();
-	UFUNCTION()
-		void ApplyTrimp();
-	UFUNCTION()
-		void ApplyTrimpReplication();
-	UFUNCTION(Server, Reliable)
-		void ServerApplyTrimpReplication();
-	UFUNCTION(NetMulticast, Reliable)
-		void HandleApplyTrimpReplication();
-	#pragma endregion
-
-	#pragma region Bhop cap
-	UFUNCTION()
-		void ApplyBhopCap();
-	UFUNCTION()
-		void BhopCapReplication();
-	UFUNCTION(Server, Reliable)
-		void ServerBhopCapReplication();
-	UFUNCTION(NetMulticast, Reliable)
-		void HandleBhopCapReplication();
-	#pragma endregion
 
 	// Other bhop functions
-	UFUNCTION()
-		void ResetFrictionDelay();
+	UFUNCTION() void ResetFrictionDelay();
 
 	// the base bhop values
 	#pragma region Base Bhop values

@@ -90,36 +90,6 @@ ABhopCharacter::ABhopCharacter(const FObjectInitializer& ObjectInitializer) // T
 }
 
 
-void ABhopCharacter::InitializeAttributes()
-{
-	if (AbilitySystemComponent && DefaultAttributeEffect)
-	{
-		// This is a context handle
-		FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
-		EffectContext.AddSourceObject(this);
-
-		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DefaultAttributeEffect, 1, EffectContext);
-
-		if (SpecHandle.IsValid())
-		{
-			FActiveGameplayEffectHandle GEHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-		}
-	}
-}
-
-
- void ABhopCharacter::GiveBaseAbilities()
-{
-	 if (HasAuthority() && AbilitySystemComponent)
-	 {
-		 for (TSubclassOf<UProtoGasGameplayAbility>& Ability : DefaultAbilties)
-		 {
-			 AbilitySystemComponent->GiveAbility(
-				 FGameplayAbilitySpec(Ability, 1, static_cast<int32>(Ability.GetDefaultObject()->AbilityInputID), this)
-			 );
-		 }
-	 }
-}
 void ABhopCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -161,6 +131,38 @@ void ABhopCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABhopCharacter, DefaultMaxWalkSpeed);
 	DOREPLIFETIME(ABhopCharacter, bApplyingBhopCap);
 	// ImpulseVector
+}
+
+
+void ABhopCharacter::InitializeAttributes()
+{
+	if (AbilitySystemComponent && DefaultAttributeEffect)
+	{
+		// This is a context handle
+		FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
+		EffectContext.AddSourceObject(this);
+
+		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DefaultAttributeEffect, 1, EffectContext);
+
+		if (SpecHandle.IsValid())
+		{
+			FActiveGameplayEffectHandle GEHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		}
+	}
+}
+
+
+ void ABhopCharacter::GiveBaseAbilities()
+{
+	 if (HasAuthority() && AbilitySystemComponent)
+	 {
+		 for (TSubclassOf<UProtoGasGameplayAbility>& Ability : DefaultAbilties)
+		 {
+			 AbilitySystemComponent->GiveAbility(
+				 FGameplayAbilitySpec(Ability, 1, static_cast<int32>(Ability.GetDefaultObject()->AbilityInputID), this)
+			 );
+		 }
+	 }
 }
 #pragma endregion
 
@@ -281,7 +283,6 @@ void ABhopCharacter::BhopAndTrimpLogic()
 {
 	RampCheck();
 	ApplyTrimp();
-	ApplyTrimpReplication();
 
 	bool handleJumpAndBhopCap = false;
 
@@ -307,7 +308,6 @@ void ABhopCharacter::BhopAndTrimpLogic()
 		/*if (bEnableBunnyHopCap)
 		{
 			ApplyBhopCap();
-			BhopCapReplication();
 		}*/
 	}
 }
@@ -353,35 +353,12 @@ void ABhopCharacter::ApplyTrimp()
 	
 	// Set trimp jump impulse
 	TrimpJumpImpulse = TrimpImpulse.Z + DefaultJumpVelocity;
-}
 
-
-void ABhopCharacter::ApplyTrimpReplication()
-{
-	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
-	if (HasAuthority())
+	// Apply the trimp impulse
+	if (GetBhopCharacterMovement())
 	{
-		ServerApplyTrimpReplication();
-	}
-	else
-	{
-		HandleApplyTrimpReplication();
-	}
-}
-
-
-void ABhopCharacter::ServerApplyTrimpReplication_Implementation()
-{
-	HandleApplyTrimpReplication();
-}
-
-
-void ABhopCharacter::HandleApplyTrimpReplication_Implementation()
-{
-	if (GetCharacterMovement())
-	{
-		GetCharacterMovement()->JumpZVelocity = TrimpJumpImpulse;
-		GetCharacterMovement()->MaxWalkSpeed = TrimpLateralImpulse;
+		GetBhopCharacterMovement()->SetBhopJumpZVelocity(TrimpJumpImpulse);
+		GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(TrimpLateralImpulse);
 		AddMovementInput(TrimpImpulse);
 	}
 }
@@ -407,73 +384,41 @@ void ABhopCharacter::ApplyBhopCap()
 
 		// [Not used for multiplayer] apply impulse in opposite direction of our movement
 		//GetCharacterMovement()->AddImpulse(BhopCapVector, true);
-		//GetCharacterMovement()->MaxWalkSpeed = bhopCapNewSpeed;
+		//GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(bhopCapNewSpeed);
 	}
 	else
 	{
 		bApplyingBhopCap = false;
 	}
-}
 
-
-void ABhopCharacter::BhopCapReplication()
-{
-	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
-	if (HasAuthority())
+	// Apply the bhop cap
+	if (GetBhopCharacterMovement())
 	{
-		ServerBhopCapReplication();
-	}
-	else
-	{
-		HandleBhopCapReplication();
-	}
-}
-
-
-void ABhopCharacter::ServerBhopCapReplication_Implementation()
-{
-	HandleBhopCapReplication();
-}
-
-
-void ABhopCharacter::HandleBhopCapReplication_Implementation()
-{
-	if (GetCharacterMovement())
-	{
-		GetCharacterMovement()->MaxWalkSpeed = bhopCapNewSpeed;
+		GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(bhopCapNewSpeed);
 		AddMovementInput(BhopCapVector);
 	}
 }
 #pragma endregion
 
 
-#pragma region Reset Friction
+#pragma region Handling Friction
+// Remove friction in air and for the coyote frames on landing
+void ABhopCharacter::RemoveFriction()
+{
+	if (GetBhopCharacterMovement())
+	{
+		GetBhopCharacterMovement()->SetBhopGroundFriction(0.f);
+	}
+}
+
+
+// When the character lands, add the base movement speed limit and friction
 void ABhopCharacter::ResetFriction()
 {
-	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
-	if (HasAuthority()) // On Server
+	if (GetBhopCharacterMovement())
 	{
-		ServerResetFriction();
-	}
-	else
-	{
-		HandleResetFriction();
-	}
-}
-
-
-void ABhopCharacter::ServerResetFriction_Implementation()
-{
-	HandleResetFriction();
-}
-
-
-void ABhopCharacter::HandleResetFriction_Implementation()
-{
-	if (GetCharacterMovement())
-	{
-		GetCharacterMovement()->MaxWalkSpeed = DefaultMaxWalkSpeed;
-		GetCharacterMovement()->GroundFriction= DefaultFriction;
+		GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(DefaultMaxWalkSpeed);
+		GetBhopCharacterMovement()->SetBhopGroundFriction(DefaultFriction);
 	}
 }
 
@@ -483,37 +428,6 @@ void ABhopCharacter::ResetFrictionDelay()
 {
 	ResetFriction();
 	NumberOfTimesPogoResetFrictionUUID++;
-}
-#pragma endregion
-
-
-#pragma region Remove Friction
-void ABhopCharacter::RemoveFriction()
-{
-	// tldr everything important should be handled solely by the server and passed down to the clients. Server calls multicast to implement that. Tbd on what should be implemented here in ai scenarios.
-	if (HasAuthority()) // On Server
-	{
-		ServerRemoveFriction();
-	}
-	else
-	{
-		HandleRemoveFriction();
-	}
-}
-
-
-void ABhopCharacter::ServerRemoveFriction_Implementation()
-{
-	HandleRemoveFriction();
-}
-
-
-void ABhopCharacter::HandleRemoveFriction_Implementation()
-{
-	if (GetCharacterMovement())
-	{
-		GetCharacterMovement()->GroundFriction = 0.f;
-	}
 }
 #pragma endregion
 
@@ -558,37 +472,6 @@ bool ABhopCharacter::RampCheck()
 }
 #pragma endregion
 
-
-#pragma region Add Ramp Momentum
-// A jump force is needed to prevent sticking to the ground when exiting a rampslide
-void ABhopCharacter::AddRampMomentum()
-{
-	if (HasAuthority())
-	{
-		ServerAddRampMomentum();
-	}
-	else 
-	{
-		HandleAddRampMomentum();
-	}
-}
-
-
-void ABhopCharacter::ServerAddRampMomentum_Implementation()
-{
-	HandleAddRampMomentum();
-}
-
-
-void ABhopCharacter::HandleAddRampMomentum_Implementation()
-{
-	if (GetCharacterMovement())
-	{
-		GetCharacterMovement()->JumpZVelocity = DefaultJumpVelocity * RampMomentumFactor;
-		Jump();
-	}
-}
-#pragma endregion
 
 
 #pragma region Acceleration Functions
@@ -705,7 +588,11 @@ void ABhopCharacter::HandleMovement()
 			if (bIsRampSliding)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("Adding Ramp momentum"));
-				AddRampMomentum();
+				if (GetBhopCharacterMovement())
+				{
+					GetBhopCharacterMovement()->SetBhopJumpZVelocity(DefaultJumpVelocity * RampMomentumFactor);
+					Jump();
+				}
 
 				// Then create a delay before applying the friction again
 				FLatentActionInfo StuffTodoOnComplete; // https://www.reddit.com/r/unrealengine/comments/b1t1d8/how_to_wait_for/
@@ -713,7 +600,7 @@ void ABhopCharacter::HandleMovement()
 				StuffTodoOnComplete.ExecutionFunction = FName("MovementDelayLogic");
 				StuffTodoOnComplete.Linkage = 0;
 				StuffTodoOnComplete.UUID = NumberOfTimesRampSlided;
-				UKismetSystemLibrary::Delay(GetWorld(), FrameTime * 2.f, StuffTodoOnComplete);
+				UKismetSystemLibrary::Delay(GetWorld(), FrameTime, StuffTodoOnComplete);
 			}
 			else // If we weren't rampsliding, then handle the base movement logic
 			{
@@ -780,18 +667,19 @@ void ABhopCharacter::StartJump()
 {
 	Jump();
 
-	//bJumpPressed = true;
+	bJumpPressed = true;
 	// Are we walking when we press jump? (this prevents jump sound spamming when pressing jump key in midair)
-	/*if (GetCharacterMovement() && GetCharacterMovement()->IsWalking())
+	if (GetCharacterMovement() && GetCharacterMovement()->IsWalking())
 	{
 		BhopAndTrimpLogic();
-	}*/	
+	}
+
 }
 
 
 void ABhopCharacter::StopJump()
 {
-	//bJumpPressed = false;
+	bJumpPressed = false;
 	StopJumping();
 }
 
