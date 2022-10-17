@@ -512,6 +512,7 @@ void ABhopCharacter::AccelerateGround()
 	// Apply the ground acceleration
 	UE_LOG(LogTemp, Warning, TEXT("Time: %f, Direction::Gnd: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *GroundAccelDir.ToCompactString(), CalcMaxWalkSpeed);
 	GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(CalcMaxWalkSpeed);
+	//GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
 	AddMovementInput(GroundAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 }
 
@@ -555,6 +556,7 @@ void ABhopCharacter::AccelerateAir()
 	// Apply the acceleration
 	//UE_LOG(LogTemp, Warning, TEXT("Time: %f, CalcMaxSpeed::Air: %s, MaxWalkSpeed: %f"), UKismetSystemLibrary::GetGameTimeInSeconds(this), *AirAccelDir.ToCompactString(), CalcMaxAirSpeed);
 	GetBhopCharacterMovement()->SetBhopMaxWalkSpeed(CalcMaxAirSpeed);
+	//GetCharacterMovement()->MaxWalkSpeed = CalcMaxWalkSpeed;
 	AddMovementInput(AirAccelDir); // add movement input node must be used for proper multiplayer replication as it utilizes predictionand network history.
 }
 #pragma endregion

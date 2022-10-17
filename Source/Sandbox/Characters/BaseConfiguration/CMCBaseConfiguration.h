@@ -4,35 +4,45 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "BhopCharacterMovementComponent.generated.h"
-
-/*
-Tips for handling the network replication errorsstuff
-
-Here are some suggestions:
-1. Make sure it is an actual desync, not something else (frame drop or performance issue): do this by using the command: "p.NetShowCorrections 1" and also use the command emulationPkLag 500 to simulate a ping of 500. 
-	If the problem is actually rubberbanding, you will see many green and red capsules.
-
-2. Given that the problem is a desync, this is strange but make sure you exhaust all cases to find out exactly where your problem is, this is kinda obvious but its crucial to understanding your problem.
-	Test jumping, jumping while walking, jumping while sprinting, walking off a ledge, sprinting off a ledge, ect. You want to eliminate as many cases as possible.
-
-3. Assuming the desync only happens when jumping while sprinting, I'm not sure off the top of my head why this would be but here are some things I would check:
-
-a) You aren't using the same compressed flag for jumping and sprinting.
-b) You have correctly implemented CanCombineWith on the SavedMove class.
-c) All of the usages of Saved_bWantsToSprint are correctly implemented.
-
-Sorry these suggestions aren't great, I just don't have enough info on your specific problem but it does seem like a movement safety error. A good way that I debug movement safety is to create a log message that prints 
-" {Server or Client}   {TimeStamp}    {Safe_bWantsToSprint}  "
-TimeStamp can be read from the NetworkPredictionData.
-
-Your goal here is to make sure that the value of Safe_bWantsToSprint is the same on the client and server when the TimeStamp is the same.
-Hope this helps!
+#include "CMCBaseConfiguration.generated.h"
 
 
-"p.NetShowCorrections 1"
-"emulationPkLag 500"
-*/
+
+
+// CMC network breakdown
+// First on tick the perform move function is called, which executes all the movement logic
+// Then it creates a saved move, and uses SetMoveFor to read the safe values and store them in the saved values
+// Calls canCombineMoveWith to check if there are any identical moves that can be combined to save bandwidth if necessary
+// Then Calls getCompressed flags to reduce the saved move into the small networkable packet that it sends to the server
+// Then when the server receives this move it will call updateFromCompressedFlags, and update the state variables with the values sent to it
+// Then everything should be replicated and there shouldn't be any weird rubber banding conflicts with the code. God sweet baby jesus please for once
+
+// NOTE:
+// You can only call moves that alter safe variables on the client
+// You can alter movement safe variables in non safe momement functions on the client
+// You can never utilize non movement safe variables in a movement safe function
+// And you can't call non movement safe functions that alter movement safe variables on the server
+
+
+
+
+// CMC physics breakdown
+// TickComponent grabs your input vectors to determine your direction
+// Then it either performs the move on the server, or replicates it to the server through PerformMovement(Auth), or ReplciateMovetoServer(Client)
+// The server immediately performs the move, and the client ReplicateMoveToServer replicates the movement then calls performMovement.
+// Once that's done it calls PostUpdate, which is records every server created instance that it wants to create with the client.
+// It then pushes it to an array of saved moves that it keeps track of to test against the client's saved moves. This is a very nice way of knocking out the client and server discrepancies by creating these arrays.
+// Until a move is acknowledged, it stays in that array and is kept track of. It then runs the CallServerMove function to do the same thing.
+// On the client side we've moved, and now it's time for the server to checkout our move. It does some timestamp stuff to prevent speed hacking, and then calls MoveAutonomous, which configures things like acceleration before calling performMove
+// After MoveAutonomous the server has moved in the same way that your client has. Then it checks if there was an issue through the ServerMoveHandleClientError function
+// If there was an error, it creates an adjustment to circumvent the error that occurred. Otherwise if there wasn't an error, it just sends back acknowledges it as a good move
+// 
+// If there was an error and a correction needed to be made, it sets them in UNetDriver.ServerReplicateActors, and this is were it gets complicated
+// Inside of ServerReplicateActors it grabs the playercontroller and sends the client adjustment.
+// 
+// StartNewPhysics that determines what state your character is in, and then implements the physics for that specific phys function
+
+
 
 
 /*
@@ -56,9 +66,9 @@ You will also need to extend FCharacterNetworkMoveDataContainer so that it can s
 */
 
 
-/**
- * 
- */
+// Error handling
+// "p.NetShowCorrections 1"
+// "emulationPkLag 500"
 
 
 // Defining the base movespeeds here because they're referenced across multiple classes
@@ -67,36 +77,33 @@ You will also need to extend FCharacterNetworkMoveDataContainer so that it can s
 #define GROUND_FRICTION 8.f
 
 
+/**
+ * 
+ */
 UCLASS()
-class SANDBOX_API UBhopCharacterMovementComponent : public UCharacterMovementComponent
+class SANDBOX_API UCMCBaseConfiguration : public UCharacterMovementComponent
 {
 	GENERATED_BODY()
-
+	
 
 public:
-	UBhopCharacterMovementComponent();
-
-
 	//////////////////////////////////////////////
 	// Custom FSavedMove (Bhop Implementation)	//
 	//////////////////////////////////////////////
-	class FSavedMove_Bhop : public FSavedMove_Character
+	class CMCB_FSavedMove_Character : public FSavedMove_Character
 	{
 	public:
 		typedef FSavedMove_Character Super;
 
 		// Other values values we want to pass into the saved moves
 		uint8 Saved_bWantsToSprnt : 1;
-		float Saved_BhopMaxWalkSpeed = MAX_WALK_SPEED;
-		float Saved_BhopGroundFriction = JUMP_Z_VELOCITY;
-		float Saved_BhopJumpZVelocity = GROUND_FRICTION;
 
 		// Functions 
 		/** Returns true if this move can be combined with NewMove for replication without changing any behavior */
 		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const override;
 
 		/** Combine this move with an older move and update relevant state. */
-		virtual void CombineWith(const FSavedMove_Character* OldMove, ACharacter* InCharacter, APlayerController* PC, const FVector& OldStartLocation) override;
+		//virtual void CombineWith(const FSavedMove_Character* OldMove, ACharacter* InCharacter, APlayerController* PC, const FVector& OldStartLocation) override;
 
 		/** Clear saved move properties, so it can be re-used. */
 		virtual void Clear() override;
@@ -105,22 +112,23 @@ public:
 		virtual uint8 GetCompressedFlags() const override;
 
 		/** Called to set up this saved move (when initially created) to make a predictive correction. */
-		virtual void SetMoveFor(ACharacter* C, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override;
+		virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override;
 
 		/** Called before ClientUpdatePosition uses this SavedMove to make a predictive correction	 */
-		virtual void PrepMoveFor(ACharacter* C) override;
+		virtual void PrepMoveFor(ACharacter* Character) override;
 	};
+
 
 
 	//////////////////////////////////////////////////////////////////
 	// Custom FNetworkPredictionData_Client (Bhop Implementation)	//
 	//////////////////////////////////////////////////////////////////
 	// Indicate to the cmc that we're using our custom move FSavedMove_Bhop
-	class FNetworkPredictionData_Client_BhopCharacter : public FNetworkPredictionData_Client_Character
+	class CMCB_FNetworkPredictionData_Client_Character : public FNetworkPredictionData_Client_Character
 	{
 	public:
 		typedef FNetworkPredictionData_Client_Character Super;
-		FNetworkPredictionData_Client_BhopCharacter(const UCharacterMovementComponent& ClientMovement);
+		CMCB_FNetworkPredictionData_Client_Character(const UCharacterMovementComponent& ClientMovement);
 		/* Creates a copy of the new move */
 		virtual FSavedMovePtr AllocateNewMove() override;
 	};
@@ -137,7 +145,7 @@ public:
 	 *
 	 * @see FCharacterNetworkMoveDataContainer
 	 */
-	class FBhopCharacterNetworkMoveData : public FCharacterNetworkMoveData
+	class CMCB_FCharacterNetworkMoveData : public FCharacterNetworkMoveData
 	{
 	public:
 		typedef FCharacterNetworkMoveData Super;
@@ -159,7 +167,7 @@ public:
 		float Saved_BhopGroundFriction = JUMP_Z_VELOCITY;
 		float Saved_BhopJumpZVelocity = GROUND_FRICTION;
 	};
-	
+
 	/**
 	* Struct used for network RPC parameters between client/server by ACharacter and UCharacterMovementComponent.
 	* To extend network move data and add custom parameters, you typically override this struct with a custom derived struct and set the CharacterMovementComponent
@@ -169,21 +177,23 @@ public:
 	*
 	* @see UCharacterMovementComponent::SetNetworkMoveDataContainer()
 	*/
-	class FBhopCharacterNetworkMoveDataContainer : public FCharacterNetworkMoveDataContainer
+	class CMCB_CharacterNetworkMoveDataContainer : public FCharacterNetworkMoveDataContainer
 	{
 		//typedef FCharacterNetworkMoveDataContainer Super;
-		FBhopCharacterNetworkMoveDataContainer();
-		FBhopCharacterNetworkMoveData BhopDefaultMoveData[3];
+		CMCB_CharacterNetworkMoveDataContainer();
+		CMCB_FCharacterNetworkMoveData CMCBDefaultMoveData[3];
 	};
 
 
 
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Bhop Character Movement Component Stuff																															 						 //
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// Bhop Character Movement Component Stuff																															 						 //
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 public:
+	UCMCBaseConfiguration(); // Constructor
+
 	/** Get prediction data for a client game. Should not be used if not running as a client. Allocates the data on demand and can be overridden to allocate a custom override if desired. Result must be a FNetworkPredictionData_Client_Character. */
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 
@@ -198,26 +208,17 @@ protected:
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 
 
-////////// Additional implementations to the original UCharacterMovement class ////////// 
+	////////// Additional implementations to the original UCharacterMovement class ////////// 
 public:
 	// Action functions and stuff
 	UFUNCTION(BlueprintCallable) void SprintPressed();
 	UFUNCTION(BlueprintCallable) void SprintReleased();
-	UFUNCTION(BlueprintCallable) void SetBhopMaxWalkSpeed(float Value);
-	UFUNCTION(BlueprintCallable) void SetBhopGroundFriction(float Value);
-	UFUNCTION(BlueprintCallable) void SetBhopJumpZVelocity(float Value);
 
 	// Movement variables that are hoisted to the network
 	bool Safe_bWantsToSprnt = false;
-	float Safe_BhopMaxWalkSpeed = MAX_WALK_SPEED;
-	float Safe_BhopGroundFriction = GROUND_FRICTION;
-	float Safe_BhopJumpZVelocity = JUMP_Z_VELOCITY;
 
 	// Defaults configuration for the component
 	UPROPERTY() float DefaultMaxWalkSpeed = MAX_WALK_SPEED;
 	UPROPERTY() float DefaultMaxSprintSpeed = MAX_WALK_SPEED * 2;
-	UPROPERTY() float DefaultGroundFriction = GROUND_FRICTION;
-	UPROPERTY() float DefaultJumpZVelocity = JUMP_Z_VELOCITY;
-
 
 };
