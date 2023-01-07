@@ -203,6 +203,9 @@ public:
 	/* Process a move at the given time stamp, given the compressed flags representing various events that occurred (ie jump). */
 	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel) override;
 
+	/* Get's the max speed base on the movement mode you're in */
+	virtual float GetMaxSpeed() const override;
+
 
 protected:
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;

@@ -26,9 +26,9 @@
 #include "UObject/Class.h"
 
 // Gameplay Ability System plugin
-#include "Sandbox/GAS/ProtoASC.h"
-#include "Sandbox/GAS/ProtoAttributeSet.h"
-#include "Sandbox/GAS/ProtoGasGameplayAbility.h"
+//#include "Sandbox/GAS/ProtoASC.h"
+//#include "Sandbox/GAS/ProtoAttributeSet.h"
+//#include "Sandbox/GAS/ProtoGasGameplayAbility.h"
 
 // Bhop Character Movement Component
 #include "CMCBaseConfiguration.h"
@@ -126,22 +126,6 @@ void ABaseCharacterConfiguration::Tick(float DeltaTime)
 #pragma endregion
 
 
-
-#pragma region Utility
-void ABaseCharacterConfiguration::PrintToScreen(FColor color, FString message)
-{
-	if (HasAuthority() && IsLocallyControlled())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("server %s:: %s"), *GetNameSafe(this), *message);
-	}
-
-	if (!HasAuthority() && IsLocallyControlled())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("client:: %s"), *GetNameSafe(this), *message);
-	}
-}
-#pragma endregion
-
 #pragma region Input Functions
 void ABaseCharacterConfiguration::MoveForward(float Value)
 {
@@ -188,6 +172,7 @@ void ABaseCharacterConfiguration::Lookup(float Value)
 void ABaseCharacterConfiguration::StartJump()
 {
 	Jump();
+	UE_LOG(LogTemp, Warning, TEXT("Old jump"));
 }
 
 
@@ -227,3 +212,18 @@ void ABaseCharacterConfiguration::CrouchButtonReleased()
 }
 #pragma endregion
 
+
+#pragma region Utility
+void ABaseCharacterConfiguration::PrintToScreen(FColor color, FString message)
+{
+	if (HasAuthority() && IsLocallyControlled())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("server %s:: %s"), *GetNameSafe(this), *message);
+	}
+
+	if (!HasAuthority() && IsLocallyControlled())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("client:: %s"), *GetNameSafe(this), *message);
+	}
+}
+#pragma endregion
