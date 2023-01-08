@@ -5,14 +5,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 
-// Gameplay Ability System
-#include "AbilitySystemInterface.h"
-
 #include "BhopCharacter.generated.h"
 
 
 UCLASS()
-class SANDBOX_API ABhopCharacter : public ACharacter, public IAbilitySystemInterface
+class SANDBOX_API ABhopCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
@@ -243,33 +240,9 @@ public:
 
 
 //////////////////////////////////////////////////////////////////////////
-// Gameplay Ability System												//
-//////////////////////////////////////////////////////////////////////////
-public:
-	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const override;
-	virtual void PossessedBy(AController* NewController) override; // Initialize ability system on Server call
-	virtual void OnRep_PlayerState() override; // Initialize ability system on Client call
-
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attribute Gas")
-		class UProtoASC* AbilitySystemComponent;
-	UPROPERTY()
-		class UProtoAttributeSet* Attributes;
-
-
-protected:
-	virtual void InitializeAttributes();
-	virtual void GiveBaseAbilities();
-
-	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Attribute Gas")
-		TSubclassOf<class UGameplayEffect> DefaultAttributeEffect;
-	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Attribute Gas")
-		TArray<TSubclassOf<class UProtoGasGameplayAbility>> DefaultAbilties;	
-
-
-//////////////////////////////////////////////////////////////////////////
 // Animations and Montages												//
 //////////////////////////////////////////////////////////////////////////
+
 
 //////////////////////////////////////////////////////////////////////////
 // Getters and Setters													//

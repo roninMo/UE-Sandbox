@@ -25,11 +25,6 @@
 #include "AI/Navigation/NavigationTypes.h"
 #include "UObject/Class.h"
 
-// Gameplay Ability System plugin
-#include "Sandbox/GAS/ProtoASC.h"
-#include "Sandbox/GAS/ProtoAttributeSet.h"
-#include "Sandbox/GAS/ProtoGasGameplayAbility.h"
-
 // Bhop Character Movement Component
 #include "BhopCharacterMovementComponent.h"
 
@@ -80,13 +75,6 @@ ABhopCharacter::ABhopCharacter(const FObjectInitializer& ObjectInitializer) // T
 	// The other important value is the server config tick rate, which is in the project defaultEngine.ini -> [/Script/OnlineSubsystemUtils.IpNetDriver] NetServerMaxTickRate = 60
 	// also this which is especially crucial for implementing the gameplay ability system [SystemSettings] net.UseAdaptiveNetUpdateFrequency = 1
 
-
-	//////////////////////// Ability System Component ////////////////////////
-	AbilitySystemComponent = CreateDefaultSubobject<UProtoASC>("AbilitySystemComponent");
-	AbilitySystemComponent->SetIsReplicated(true);
-	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
-	Attributes = CreateDefaultSubobject<UProtoAttributeSet>("Attributes");
-
 }
 
 
@@ -110,13 +98,6 @@ void ABhopCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	PlayerInputComponent->BindAction("Equip", IE_Pressed, this, &ABhopCharacter::EquipButtonPress);
 	PlayerInputComponent->BindAction("UnEquip", IE_Released, this, &ABhopCharacter::UnEquipButtonPress);
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &ABhopCharacter::CrouchButtonPressed);
-
-	// Bind ability inputs
-	if (AbilitySystemComponent && InputComponent) // Sometimes the ability system is valid but the input wouldn't be and vice versa
-	{
-		const FGameplayAbilityInputBinds Binds("Confirm", "Cancel", "EGASAbilityInputID", static_cast<int32>(EGASAbilityInputID::Confirm), static_cast<int32>(EGASAbilityInputID::Cancel)); // Sync the enums with the ability names
-		AbilitySystemComponent->BindAbilityActivationToInputComponent(InputComponent, Binds);
-	}
 }
 
 
@@ -131,38 +112,6 @@ void ABhopCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABhopCharacter, DefaultMaxWalkSpeed);
 	DOREPLIFETIME(ABhopCharacter, bApplyingBhopCap);
 	// ImpulseVector
-}
-
-
-void ABhopCharacter::InitializeAttributes()
-{
-	if (AbilitySystemComponent && DefaultAttributeEffect)
-	{
-		// This is a context handle
-		FGameplayEffectContextHandle EffectContext = AbilitySystemComponent->MakeEffectContext();
-		EffectContext.AddSourceObject(this);
-
-		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(DefaultAttributeEffect, 1, EffectContext);
-
-		if (SpecHandle.IsValid())
-		{
-			FActiveGameplayEffectHandle GEHandle = AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-		}
-	}
-}
-
-
- void ABhopCharacter::GiveBaseAbilities()
-{
-	 if (HasAuthority() && AbilitySystemComponent)
-	 {
-		 for (TSubclassOf<UProtoGasGameplayAbility>& Ability : DefaultAbilties)
-		 {
-			 AbilitySystemComponent->GiveAbility(
-				 FGameplayAbilitySpec(Ability, 1, static_cast<int32>(Ability.GetDefaultObject()->AbilityInputID), this)
-			 );
-		 }
-	 }
 }
 #pragma endregion
 
@@ -181,34 +130,6 @@ void ABhopCharacter::PostInitializeComponents()
 	Super::PostInitializeComponents();
 
 	// This function is the earliest you can access an actor component from the character clas
-}
-
-
-void ABhopCharacter::PossessedBy(AController* NewController)
-{
-	Super::PossessedBy(NewController);
-
-	// Get the character component if it was deleted when unpossessed
-	BhopCharacterMovement = Cast<UBhopCharacterMovementComponent>(GetCharacterMovement());
-
-	// Gameplay ability system init
-	AbilitySystemComponent->InitAbilityActorInfo(this, this);
-	InitializeAttributes();
-	GiveBaseAbilities();
-}
-
-
-void ABhopCharacter::OnRep_PlayerState()
-{
-	Super::OnRep_PlayerState();
-
-	AbilitySystemComponent->InitAbilityActorInfo(this, this);
-	InitializeAttributes();
-	if (AbilitySystemComponent && InputComponent) // Sometimes the ability system is valid but the input wouldn't be and vice versa
-	{
-		const FGameplayAbilityInputBinds Binds("Confirm", "Cancel", "EGASAbilityInputID", static_cast<int32>(EGASAbilityInputID::Confirm), static_cast<int32>(EGASAbilityInputID::Cancel)); // Sync the enums with the ability names
-		AbilitySystemComponent->BindAbilityActivationToInputComponent(InputComponent, Binds);
-	}
 }
 
 
@@ -754,12 +675,6 @@ inline float ABhopCharacter::GetFriction()
 {
 	if (GetCharacterMovement()) return GetCharacterMovement()->GroundFriction;
 	else return DefaultFriction;
-}
-
-
-UAbilitySystemComponent* ABhopCharacter::GetAbilitySystemComponent() const
-{
-	return AbilitySystemComponent;
 }
 #pragma endregion
 

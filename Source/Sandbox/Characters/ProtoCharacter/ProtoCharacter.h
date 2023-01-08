@@ -3,11 +3,28 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+// Character stuff
+#include "Sandbox/Characters/BaseConfiguration/BaseCharacterConfiguration.h"
 #include "GameFramework/Character.h"
+
+// Gameplay ability system stuff
+#include "AbilitySystemInterface.h"
+#include <GameplayEffectTypes.h>
+
 #include "ProtoCharacter.generated.h"
 
+// Gameplay Ability System documentation: https://github.com/tranek/GASDocumentation
+/*
+Ability system debugging:
+	- showdebug abilitysystem
+	- AbilitySystem.Debug.NextCategory
+	- page up and page down to go between targets
+*/ 
+
+
 UCLASS()
-class SANDBOX_API AProtoCharacter : public ACharacter
+class SANDBOX_API AProtoCharacter : public ABaseCharacterConfiguration, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -23,6 +40,11 @@ class SANDBOX_API AProtoCharacter : public ACharacter
 	* Learn AI, and how to implement it through C++ (Start with the Utility Ai with replicated functionality (This should be easier since AI is just basic movement, everything is handled on the server anyways))
 	* Basic combat (learn from the ai), Create lock on, hit animations, and projectile based weapons (bow) 
 
+	* Create a animation instance for an animation blueprint that grabs all the information needed for the anim blueprint
+	* Create a blend pose for walking/running/crouching, and blend two animations together, one for walking and running, and the other for a mix between that and actions that the character does like holding a weapon, etc.
+	* Pully the ue mannequin into blender, or create one and make some animations for the character (this is gonna be super important later and also sounds super fun for creating all the stuff)
+
+
 	* Later
 	* Fancy animations and characters, play around in blender
 */ 
@@ -35,27 +57,20 @@ class SANDBOX_API AProtoCharacter : public ACharacter
 // Base functions and components										//
 //////////////////////////////////////////////////////////////////////////
 public:
-	// Sets default values for this character's properties
-	AProtoCharacter();
-	virtual void Tick(float DeltaTime) override;
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	AProtoCharacter(const FObjectInitializer& ObjectInitializer);
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PostInitializeComponents() override;
-	//virtual void Destroyed() override; // This is a replicated function, handle logic pertaining to character death in here for free
+	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	// overriding this to properly replicate simulated proxies movement: https://www.udemy.com/course/unreal-engine-5-cpp-multiplayer-shooter/learn/lecture/31515548#questions
-	//virtual void OnRep_ReplicatedMovement() override;
+	//virtual void Destroyed() override; // This is a replicated function, handle logic pertaining to character death in here for free
+	//virtual void OnRep_ReplicatedMovement() override; // overriding this to replicate simulated proxies movement: https://www.udemy.com/course/unreal-engine-5-cpp-multiplayer-shooter/learn/lecture/31515548#questions
+	virtual void Tick(float DeltaTime) override;
 
 
 protected:
 	virtual void BeginPlay() override;
 
 
-private:
-	UPROPERTY(VisibleAnywhere, Category = "Camera")
-		class USpringArmComponent* CameraBoom;
-	UPROPERTY(VisibleAnywhere, Category = "Camera")
-		class UCameraComponent* CharacterCam;
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -63,38 +78,55 @@ private:
 //////////////////////////////////////////////////////////////////////////
 protected:
 	// Movement
-	void MoveForward(float Value);
-	void MoveRight(float Value);
-	void Turn(float Value);
-	void Lookup(float Value);
-	void StartJump();
-	void StopJump();
-	void StartSprint();
-	void StopSprint();
-	void CrouchButtonPressed();
-
-	// Actions
-	void EquipButtonPress();
-	void UnEquipButtonPress();
-	void LockOn();
+	virtual void StartJump() override;
+	virtual void StopJump() override;
+	virtual void StartSprint() override;
+	virtual void StopSprint() override;
+	virtual void CrouchButtonPressed() override;
+	virtual void CrouchButtonReleased() override;
 
 
 private:
+
+	
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Gameplay Ability System				// https://github.com/tranek/GASDocumentation#concepts								//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+public:
+	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const;
+	virtual void PossessedBy(AController* NewController) override; // Initialize ability system on Server call
+	virtual void OnRep_PlayerState() override; // Initialize ability system on Client call, or do this in the player controller on the AcknowledgePossession function
+
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Attribute Gas")
+		class UProtoASC* AbilitySystemComponent;
 	UPROPERTY()
-		bool bIsSprinting = false;
-	UPROPERTY()
-		float DefaultMaxWalkSpeed = 0.f;
+		class UProtoAttributeSet* Attributes;
+
+
+	virtual void InitializeAttributes();
+	virtual void GiveBaseAbilities();
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Attribute Gas")
+		TSubclassOf<class UGameplayEffect> DefaultAttributeSet;
+	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Attribute Gas")
+		TArray<TSubclassOf<class UProtoGasGameplayAbility>> DefaultAbilities;
 
 
 //////////////////////////////////////////////////////////////////////////
-// Bunny Hopping Stuff													//
+// Animations and Montages												//
 //////////////////////////////////////////////////////////////////////////
+public:
 
-	UFUNCTION(Server, Reliable)
-		void ServerHandleMovementReplication(FVector Direction, float Value);
-	UFUNCTION(NetMulticast, Reliable)
-		void ClientHandleMovementReplication(FVector Direction, float Value);
-	UFUNCTION()
-		void HandleMovement(float Value, EAxis::Type Axis);
+
+
+//////////////////////////////////////////////////////////////////////////
+// Getters and Setters													//
+//////////////////////////////////////////////////////////////////////////
+public:
+
+
+
 
 };

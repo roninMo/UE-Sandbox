@@ -28,28 +28,24 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// Health
+	UFUNCTION() virtual void OnRep_Health(const FGameplayAttributeData& OldHealth);
 	UPROPERTY(BlueprintReadOnly, Category = "Attributes", ReplicatedUsing = OnRep_Health)
 		FGameplayAttributeData Health;
-	UFUNCTION()
-		virtual void OnRep_Health(const FGameplayAttributeData& OldHealth);
 
 	// Stamina
+	UFUNCTION() virtual void OnRep_Stamina(const FGameplayAttributeData& OldStamina);
 	UPROPERTY(BlueprintReadOnly, Category = "Attributes", ReplicatedUsing = OnRep_Stamina)
 		FGameplayAttributeData Stamina;
-	UFUNCTION()
-		virtual void OnRep_Stamina(const FGameplayAttributeData& OldStamina);
 
 	// Attack power
+	UFUNCTION() virtual void OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower);
 	UPROPERTY(BlueprintReadOnly, Category = "Attributes", ReplicatedUsing = OnRep_AttackPower)
 		FGameplayAttributeData AttackPower;
-	UFUNCTION()
-		virtual void OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower);
 
 	// Mana 
+	UFUNCTION() virtual void OnRep_Mana(const FGameplayAttributeData& OldMana);
 	UPROPERTY(BlueprintReadOnly, Category = "Attributes", ReplicatedUsing = OnRep_Mana)
 		FGameplayAttributeData Mana;
-	UFUNCTION()
-		virtual void OnRep_Mana(const FGameplayAttributeData& OldMana);
 
 
 protected:

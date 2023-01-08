@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
-#include <Sandbox/Sandbox.h>
+#include "../Sandbox.h"
 #include "ProtoGasGameplayAbility.generated.h"
 
 /**
@@ -21,7 +21,7 @@ public:
 
 	// Abilities with this set will automatically activate when the input is pressed
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Ability")
-		EGASAbilityInputID AbilityInputID = EGASAbilityInputID::None; 
+		EGASAbilityInputID AbilityInputID = EGASAbilityInputID::None;
 
 
 };
